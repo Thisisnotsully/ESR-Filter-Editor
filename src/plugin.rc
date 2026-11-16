@@ -1,0 +1,27 @@
+#include <D2RLPlugin/resource.h>
+#include <D2RLPlugin/version.h>
+
+D2RL_PLUGIN_MANIFEST_RESOURCE_ID RCDATA { D2RL_PLUGIN_RESOURCE_DWORD(D2RL_PLUGIN_ABI_VERSION) }
+
+1 VERSIONINFO
+FILEVERSION 0,1,0,0
+PRODUCTVERSION 0,1,0,0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Sully"
+      VALUE "FileDescription", "Loot Filter Editor: in-game loot filter editor (milestone 1)."
+      VALUE "FileVersion", "0.1.0"
+      VALUE "InternalName", "sully.loot-filter-editor"
+      VALUE "OriginalFilename", "d2rl-sully-loot-filter-editor.dll"
+      VALUE "ProductName", "Loot Filter Editor"
+      VALUE "ProductVersion", "0.1.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END
