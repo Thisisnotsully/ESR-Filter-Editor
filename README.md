@@ -11,7 +11,7 @@ Point at a ground item with the mouse, or target it with a controller, and press
 The plugin asks the loot filter plugin about that item.
 Then it prints three lines in the chat window:
 
-1. The item: name, code, quality, tier, item level, sockets, ethereal.
+1. The item: name, code, quality, tier, item level, sockets, ethereal, and "not in Chronicle" or "in Chronicle" (needs the Chronicle Tracker).
 2. Whether the filter shows or hides it, and which rule hides it.
 3. The rules that match it (the first three, with a "+N more" if there are more).
 
@@ -84,6 +84,17 @@ That loot filter DLL must be the build with the editor bridge.
 - [ ] Loot filter without the bridge: press the key. One console line says the bridge is not available. It is not repeated for the same problem.
 - [ ] Console command: open the console and type `lfeditor`. It says whether the bridge is acquired, its version, and the filter state (loaded, title, id, level, Show Hidden, hover, rule count, errors, warnings).
 - [ ] Check the plugin log: each key press on an item adds one long line with every field and rule.
+- [ ] Chronicle, not found yet: point at a unique, set item or runeword your character has not found yet. Line 1 ends with "not in Chronicle". The log line has `chronicle=1`.
+- [ ] Chronicle, found: point at one your character has found. Line 1 ends with "in Chronicle" (`chronicle=2`).
+- [ ] Chronicle, other items: a magic, rare or plain item shows neither (`chronicle=0`).
+- [ ] Chronicle filter condition: put this rule near the top of your filter's rules and save:
+
+      { "comment": "Not in Chronicle", "chronicle": "missing", "show": true, "labelBorder": { "color": [255, 215, 0], "width": 2 }, "notify": true }
+
+  A unique, set item or runeword you have not found gets a gold border and a chat line when it drops. One you have found does not.
+  The key lists the rule (R1 if it is first) for the first kind and not for the second.
+  A later rule with its own labelBorder replaces the border.
+- [ ] Without the Chronicle Tracker: remove its DLL (or set `enabled = false` in its config) and start the game. No item says "in Chronicle" or "not in Chronicle", and the rule above never matches. Once an item has dropped, type `lootfilter` in the console: it says the chronicle service is not acquired, so chronicle conditions do not match. The plugin log has one warning about it, not one per item.
 
 ## Notes
 

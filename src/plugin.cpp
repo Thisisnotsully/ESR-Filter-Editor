@@ -221,6 +221,8 @@ void PrintItem(const Bridge::HoveredItem& item) {
     line1 += Dot + "ilvl " + Number(item.itemLevel);
     if (item.sockets > 0) line1 += Dot + Number(item.sockets) + (item.sockets == 1 ? " socket" : " sockets");
     if (item.ethereal != 0) line1 += Dot + "ethereal";
+    if (item.chronicle == 1) line1 += Dot + "not in Chronicle";
+    else if (item.chronicle == 2) line1 += Dot + "in Chronicle";
 
     // Line 2: shown or hidden.
     std::string line2;
@@ -257,7 +259,7 @@ void PrintItem(const Bridge::HoveredItem& item) {
         + " quality=" + Number(item.quality) + " baseTier=" + Number(item.baseTier) + " ilvl=" + Number(item.itemLevel)
         + " sockets=" + Number(item.sockets) + "/" + Number(item.maxSockets) + " uniqueOrSetId=" + Number(item.uniqueOrSetId)
         + " ethereal=" + Number(item.ethereal) + " identified=" + Number(item.identified) + " runeword=" + Number(item.runeword)
-        + " gold=" + Number(item.gold) + " hidden=" + Number(item.hidden) + " nameChanged=" + Number(item.nameChanged)
+        + " gold=" + Number(item.gold) + " chronicle=" + Number(item.chronicle) + " hidden=" + Number(item.hidden) + " nameChanged=" + Number(item.nameChanged)
         + " hiddenBy=" + Number(item.hiddenBy) + " (" + hiddenText + ") matched=" + Number(item.matchedCount)
         + " revision=" + std::to_string(item.filterRevision) + " rules=[" + fullRules + "]";
     if (item.matchedCount > listed) log += " (list holds " + Number(listed) + " of " + Number(item.matchedCount) + ")";
