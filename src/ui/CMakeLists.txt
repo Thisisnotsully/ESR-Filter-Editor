@@ -2,6 +2,7 @@
 add_library(ui STATIC
     add_rule_view.cpp
     item_rules_view.cpp
+    new_filter_view.cpp
     browse_view.cpp
     rule_draft.cpp
     rule_text.cpp

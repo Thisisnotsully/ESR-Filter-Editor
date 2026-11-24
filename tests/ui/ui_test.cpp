@@ -16,6 +16,7 @@
 #include "fakes.hpp"
 #include "add_rule_view.hpp"
 #include "item_rules_view.hpp"
+#include "new_filter_view.hpp"
 #include "version_name_view.hpp"
 #include "rule_draft.h"
 #include "rule_text.h"
@@ -952,6 +953,105 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                 CHECK(edit::ReadText((user / "selection.json").string(), selection) &&
                       selection.find("\"activeFilter\": \"user:Sullys-QoL-Filter (my version).json\"") != std::string::npos);
             }
+        }
+    }
+
+    // A new filter from the questions: "+ New filter…" in the drop-down, every step filled in, Create switches to it.
+    {
+        h.source->folders.starter = ESRFE_STARTER_DIR;
+        h.source->info.filterId = "repo:QoL-Filter/Sullys-QoL-Filter.json";
+        h.source->info.path = (user / "QoL-Filter" / "Sullys-QoL-Filter.json").string();
+        h.source->Put(filterText);
+        h.Refresh(true);
+        h.Paint();
+        esrfe::overlay::Dropdown& filters = h.view->Filters();
+        CHECK(filters.options.back() == "+ New filter…");
+        const int before = filters.selected;
+        h.platform.pushed.clear();
+        filters.onChange(static_cast<int>(filters.options.size()) - 1, h.form);
+        CHECK(filters.selected == before);
+        auto wizard = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<NewFilterView>(h.platform.pushed.back());
+        CHECK(wizard != nullptr && wizard->Ready());
+        if (wizard != nullptr && wizard->Ready()) {
+            esrfe::overlay::Form wf{h.platform, wizard};
+            const auto layout = [&] { wf.Layout(h.client, h.content); };
+            layout();
+            wf.Paint(h.platform.canvas);
+            CHECK(wizard->StepCount() == 10 && wizard->StepKey() == "name" && wizard->Name().Value() == "My filter");
+            CHECK(wizard->Answers().levels.size() == 4);
+            wf.Focus(&wizard->Name());
+            for (int i = 0; i < 9; ++i) {
+                esrfe::overlay::KeyEvent bs;
+                bs.key = esrfe::overlay::Key::Backspace;
+                wf.KeyDown(bs);
+            }
+            for (char16_t ch : esrfe::overlay::Utf8ToUtf16("Speed run")) wf.Char(ch);
+            CHECK(wizard->Answers().name == "Speed run");
+            // Levels: three.
+            wizard->GoTo(1);
+            layout();
+            wf.Paint(h.platform.canvas);
+            wizard->CountChip(2).onClick(wf);
+            CHECK(wizard->Answers().levels.size() == 3 && wizard->Answers().defaultLevel == 3);
+            // Gold and potions: the gold part's steps; change the first.
+            wizard->GoTo(3);
+            layout();
+            CHECK(wizard->StepKey() == "gold" && wizard->Lines().size() > 10);
+            CHECK(wizard->Lines()[0].row < 0 && wizard->LineText(1).find("gold") != std::string::npos);
+            wizard->List().Select(2, nullptr);  // R071: up to 99 gold from clvl 20
+            wizard->List().onSelect(2, wf);
+            layout();
+            CHECK(wizard->Clvl().visible && wizard->Amount().visible && wizard->Towns().visible && wizard->AddStep().visible);
+            wizard->Clvl().onChange(25, wf);
+            wizard->AddStep().onClick(wf);
+            const edit::PartChoice* gold = wizard->Answers().Part("gold");
+            CHECK(gold != nullptr && gold->rows.size() == 14 && gold->rows[1].clvl == 25 && gold->rows[2].copyOf == "R071");
+            wf.Paint(h.platform.canvas);
+            // Gear: white gear off.
+            wizard->GoTo(5);
+            layout();
+            int white = -1;
+            for (int i = 0; i < static_cast<int>(wizard->Lines().size()); ++i)
+                if (wizard->Lines()[static_cast<std::size_t>(i)].row < 0 && wizard->LineText(i) == "White weapons and armour") white = i;
+            CHECK(white >= 0);
+            wizard->ToggleLine(white, wf);
+            CHECK(!wizard->Answers().Part("normalGear")->on);
+            // Look: the uniques' border red.
+            wizard->GoTo(8);
+            layout();
+            CHECK(wizard->StepKey() == "look" && wizard->Picker().visible);
+            wizard->BorderSwatch(1).onClick(wf);
+            wf.Paint(h.platform.canvas);
+            CHECK(!wizard->Answers().looks.empty());
+            h.source->played.clear();
+            wizard->TestSound().onClick(wf);
+            CHECK(h.source->played.size() == 1);
+            // Check, then Create.
+            wizard->GoTo(9);
+            layout();
+            wf.Paint(h.platform.canvas);
+            CHECK(wizard->Create().visible && wizard->Create().enabled);
+            bool rules = false;
+            for (const std::string& l : wizard->CheckLines()) rules = rules || l.find(" rules") != std::string::npos;
+            CHECK(rules);
+            const int pops = h.platform.pops;
+            wizard->Create().onClick(wf);
+            CHECK(h.platform.pops == pops + 1);
+            CHECK(fs::exists(user / "Speed run.json") && fs::exists(user / "esr-filter-editor" / "made" / "Speed run" / "recipe.json"));
+            std::string selection;
+            CHECK(edit::ReadText((user / "selection.json").string(), selection) && selection.find("user:Speed run.json") != std::string::npos);
+            // The loot filter loads it; the editor follows, and it is in the drop-down.
+            h.source->info.filterId = "user:Speed run.json";
+            h.source->info.path = (user / "Speed run.json").string();
+            std::string made;
+            edit::ReadText(h.source->info.path, made);
+            h.source->Put(made);
+            h.Run();
+            h.Run();
+            h.Paint();
+            CHECK(h.view->Data() != nullptr && h.view->Data()->doc.GetSettings().title == "Speed run");
+            CHECK(h.view->Data() != nullptr && h.view->Data()->session != nullptr && h.view->Data()->session->IsCopy());
+            CHECK(h.view->Filters().SelectedText() == "Speed run");
         }
     }
 

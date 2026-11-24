@@ -1,0 +1,1592 @@
+{
+ "formatVersion": 1,
+ "about": "The ESR Filter Editor's new-filter wizard: its steps, and the parts of starter-filter.json each step edits. Made by tools/starter/make_starter.py.",
+ "from": "Sully's QoL Filter 0.9.6",
+ "towns": [
+  1,
+  40,
+  75,
+  103,
+  109
+ ],
+ "steps": [
+  {
+   "key": "name",
+   "title": "Name"
+  },
+  {
+   "key": "levels",
+   "title": "Levels"
+  },
+  {
+   "key": "protect",
+   "title": "Always show",
+   "help": "Items no other rule can hide. Each one can be limited to the lower levels."
+  },
+  {
+   "key": "gold",
+   "title": "Gold and potions",
+   "help": "What is hidden, from which level, and from which character level. Each line is one step: add more for finer control."
+  },
+  {
+   "key": "junk",
+   "title": "Gems and odds and ends",
+   "help": "Gems, scrolls and small items, hidden as the game goes on."
+  },
+  {
+   "key": "gear",
+   "title": "Gear",
+   "help": "White, superior, magic and rare weapons and armour."
+  },
+  {
+   "key": "uniques",
+   "title": "Uniques, sets, jewellery, coupons",
+   "help": "Uniques and sets by tier, rings, amulets, charms and Ancient Coupons."
+  },
+  {
+   "key": "announce",
+   "title": "Announcements and labels",
+   "help": "Chat lines, sounds, label colours and short names. Turn off what you do not want."
+  },
+  {
+   "key": "look",
+   "title": "Look"
+  },
+  {
+   "key": "check",
+   "title": "Check"
+  }
+ ],
+ "parts": [
+  {
+   "key": "mythUniques",
+   "step": "protect",
+   "kind": "show",
+   "label": "Mythical uniques",
+   "help": "Mythical uniques, Lich King Essence amulets included.",
+   "rules": [
+    "R001",
+    "R002"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "ethereal",
+   "step": "protect",
+   "kind": "show",
+   "label": "Ethereal weapons with 0 or 2+ sockets",
+   "help": "Ethereal weapons good for runewords, by tier; ethereal Mythical bases on every level.",
+   "rules": [
+    "R003",
+    "R004",
+    "R005",
+    "R006"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "skillBases",
+   "step": "protect",
+   "kind": "show",
+   "label": "Bases with +All Skills, summons or +3 to a skill tab",
+   "help": "White and superior gear with +All Skills, +1 Summons Limit, or +3 or more to a skill tab.",
+   "rules": [
+    "R007",
+    "R008",
+    "R009"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "valuables",
+   "step": "protect",
+   "kind": "show",
+   "label": "S-tier materials and high runes",
+   "help": "S-tier crafting materials, runes Mal and up, gold and purple ESR runes and their decals.",
+   "rules": [
+    "R010"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "superiorRolls",
+   "step": "protect",
+   "kind": "show",
+   "label": "Superior bases with the best special rolls",
+   "help": "Superior gloves, belts, helms, boots, missile weapons and crossbows with their top rolls (and lower rolls on the lower levels).",
+   "rules": [
+    "R052",
+    "R053",
+    "R054",
+    "R055",
+    "R056",
+    "R057",
+    "R058",
+    "R059",
+    "R060",
+    "R061",
+    "R062",
+    "R063",
+    "R064",
+    "R065",
+    "R066",
+    "R067",
+    "R068"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "gold",
+   "step": "gold",
+   "kind": "hide",
+   "label": "Gold piles",
+   "help": "Small gold piles. Each step hides piles up to an amount, from a filter level and a character level.",
+   "rules": [
+    "R070",
+    "R071",
+    "R072",
+    "R073",
+    "R074",
+    "R075",
+    "R076",
+    "R077",
+    "R078",
+    "R079",
+    "R080",
+    "R081",
+    "R082"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "minorPotions",
+   "step": "gold",
+   "kind": "hide",
+   "label": "Minor healing and mana potions",
+   "help": "",
+   "rules": [
+    "R084"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "lightPotions",
+   "step": "gold",
+   "kind": "hide",
+   "label": "Light healing and mana potions",
+   "help": "",
+   "rules": [
+    "R085",
+    "R090"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "normalPotions",
+   "step": "gold",
+   "kind": "hide",
+   "label": "Healing and mana potions",
+   "help": "",
+   "rules": [
+    "R086",
+    "R088",
+    "R091",
+    "R092"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "greaterPotions",
+   "step": "gold",
+   "kind": "hide",
+   "label": "Greater and super healing and mana potions",
+   "help": "",
+   "rules": [
+    "R087",
+    "R089",
+    "R093"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "throwingPotions",
+   "step": "gold",
+   "kind": "hide",
+   "label": "Throwing potions (gas and oil)",
+   "help": "",
+   "rules": [
+    "R094"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "lowValue",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Low-value items, scrolls and tomes",
+   "help": "Stamina, antidote and thawing potions, tomes and scrolls.",
+   "rules": [
+    "R095"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "ancientScrolls",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Ancient Scrolls",
+   "help": "",
+   "rules": [
+    "R096"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "chippedGems",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Chipped gems and skulls",
+   "help": "",
+   "rules": [
+    "R097"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "flawedGems",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Flawed gems and skulls",
+   "help": "",
+   "rules": [
+    "R100",
+    "R101"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "standardGems",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Standard gems and skulls",
+   "help": "",
+   "rules": [
+    "R102",
+    "R103"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "moreGems",
+   "step": "junk",
+   "kind": "hide",
+   "label": "More gem and skull grades",
+   "help": "",
+   "rules": [
+    "R098",
+    "R099"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "rejuvs",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Small rejuvenation potions",
+   "help": "",
+   "rules": [
+    "R133",
+    "R135"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "lowMaps",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Tier 1 maps",
+   "help": "",
+   "rules": [
+    "R134"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "decipherer",
+   "step": "junk",
+   "kind": "hide",
+   "label": "Ancient Decipherer",
+   "help": "",
+   "rules": [
+    "R136"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "inferior",
+   "step": "gear",
+   "kind": "hide",
+   "label": "Inferior (cracked, damaged) items",
+   "help": "",
+   "rules": [
+    "R104"
+   ],
+   "rows": true,
+   "minimal": true
+  },
+  {
+   "key": "normalGear",
+   "step": "gear",
+   "kind": "hide",
+   "label": "White weapons and armour",
+   "help": "White gear with at most 1 socket; on higher levels all white gear.",
+   "rules": [
+    "R105",
+    "R106",
+    "R109"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "superiorGear",
+   "step": "gear",
+   "kind": "hide",
+   "label": "Superior weapons and armour without +All Skills",
+   "help": "",
+   "rules": [
+    "R110",
+    "R111",
+    "R116"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "magicGear",
+   "step": "gear",
+   "kind": "hide",
+   "label": "Magic weapons and armour",
+   "help": "",
+   "rules": [
+    "R107",
+    "R108"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "quivers",
+   "step": "gear",
+   "kind": "hide",
+   "label": "Arrows and bolts",
+   "help": "",
+   "rules": [
+    "R112",
+    "R114",
+    "R117"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "rareGear",
+   "step": "gear",
+   "kind": "hide",
+   "label": "Rare weapons and armour",
+   "help": "",
+   "rules": [
+    "R113",
+    "R115",
+    "R118"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "mythicalBases",
+   "step": "gear",
+   "kind": "hide",
+   "label": "White Mythical bases",
+   "help": "",
+   "rules": [
+    "R124"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "uniqueGear",
+   "step": "uniques",
+   "kind": "hide",
+   "label": "Unique weapons and armour by tier",
+   "help": "",
+   "rules": [
+    "R119",
+    "R121",
+    "R123"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "setItems",
+   "step": "uniques",
+   "kind": "hide",
+   "label": "Set items by tier",
+   "help": "",
+   "rules": [
+    "R120",
+    "R122"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "jewellery",
+   "step": "uniques",
+   "kind": "hide",
+   "label": "Magic rings, amulets, class jewellery and charms",
+   "help": "",
+   "rules": [
+    "R125",
+    "R127",
+    "R128",
+    "R131"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "normalCoupons",
+   "step": "uniques",
+   "kind": "hide",
+   "label": "Normal Ancient Coupons",
+   "help": "",
+   "rules": [
+    "R126",
+    "R129",
+    "R132"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "exceptionalCoupons",
+   "step": "uniques",
+   "kind": "hide",
+   "label": "Exceptional Ancient Coupons",
+   "help": "",
+   "rules": [
+    "R130"
+   ],
+   "rows": true,
+   "minimal": false
+  },
+  {
+   "key": "dropAnnouncementscraftingReagents",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Drop Announcements: Crafting reagents",
+   "help": "",
+   "rules": [
+    "R011",
+    "R012",
+    "R013",
+    "R014",
+    "R015",
+    "R016",
+    "R017",
+    "R018"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "dropAnnouncementsuniquesAndSets",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Drop Announcements: Uniques and sets",
+   "help": "",
+   "rules": [
+    "R019",
+    "R020",
+    "R021",
+    "R022",
+    "R023",
+    "R024"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "dropAnnouncementscoupons",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Drop Announcements: Coupons",
+   "help": "",
+   "rules": [
+    "R025",
+    "R026",
+    "R027"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "dropAnnouncementsclassJewellery",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Drop Announcements: Class jewellery",
+   "help": "",
+   "rules": [
+    "R028"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "dropAnnouncementsperfectGems",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Drop Announcements: Perfect gems",
+   "help": "",
+   "rules": [
+    "R029"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "superiorBaseStatTagsskillBonuses",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Superior Base Stat Tags: Skill bonuses",
+   "help": "",
+   "rules": [
+    "R030",
+    "R031",
+    "R032"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "superiorBaseStatTagsattributesLifeManaAndResists",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Superior Base Stat Tags: Attributes, life, mana and resists",
+   "help": "",
+   "rules": [
+    "R033",
+    "R034",
+    "R035",
+    "R036",
+    "R037",
+    "R038",
+    "R039",
+    "R040"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "superiorBaseStatTagsdamagePerLevel",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Superior Base Stat Tags: Damage per level",
+   "help": "",
+   "rules": [
+    "R041",
+    "R042",
+    "R043",
+    "R044",
+    "R045",
+    "R046"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "superiorBaseStatTagsskillTabBases",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Superior Base Stat Tags: Skill-tab bases",
+   "help": "",
+   "rules": [
+    "R047",
+    "R048",
+    "R049"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "superiorBaseStatTagsglovesBeltsBootsAndHelms",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Superior Base Stat Tags: Gloves, belts, boots and helms",
+   "help": "",
+   "rules": [
+    "R050",
+    "R051"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "hideByStrictnessgold",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Gold: large-pile announcement and $$ names",
+   "help": "",
+   "rules": [
+    "R069",
+    "R083"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsspecialItems",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Special items",
+   "help": "",
+   "rules": [
+    "R137",
+    "R138",
+    "R139",
+    "R140",
+    "R141",
+    "R142",
+    "R143",
+    "R144",
+    "R145",
+    "R146",
+    "R147",
+    "R148",
+    "R149",
+    "R150",
+    "R151",
+    "R152"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelslegendaryAndSTierMaterials",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Legendary and S-tier materials",
+   "help": "",
+   "rules": [
+    "R153",
+    "R154",
+    "R155",
+    "R156",
+    "R157",
+    "R158"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsauraStones",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Aura stones",
+   "help": "",
+   "rules": [
+    "R159"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsuniquesAndSets",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Uniques and sets",
+   "help": "",
+   "rules": [
+    "R160",
+    "R161",
+    "R162",
+    "R163",
+    "R164",
+    "R165",
+    "R166",
+    "R167",
+    "R168",
+    "R169",
+    "R170"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsmythicals",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Mythicals",
+   "help": "",
+   "rules": [
+    "R171",
+    "R172",
+    "R173",
+    "R174",
+    "R175",
+    "R176",
+    "R177",
+    "R178",
+    "R179",
+    "R180",
+    "R181",
+    "R182",
+    "R183",
+    "R184",
+    "R185",
+    "R186",
+    "R187",
+    "R188",
+    "R189",
+    "R190",
+    "R191",
+    "R192",
+    "R193",
+    "R194",
+    "R195",
+    "R196",
+    "R197",
+    "R198",
+    "R199",
+    "R200",
+    "R201",
+    "R202",
+    "R203",
+    "R204",
+    "R205",
+    "R206",
+    "R207",
+    "R208",
+    "R209"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelscoupons",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Coupons",
+   "help": "",
+   "rules": [
+    "R210",
+    "R211",
+    "R212",
+    "R213",
+    "R214",
+    "R215"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelspandemoniumAndRespec",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Pandemonium and respec",
+   "help": "",
+   "rules": [
+    "R216",
+    "R217",
+    "R218"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelscraftingReagentsAndPerfectGems",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Crafting reagents and perfect gems",
+   "help": "",
+   "rules": [
+    "R219",
+    "R220",
+    "R221",
+    "R222",
+    "R223",
+    "R224",
+    "R225",
+    "R226",
+    "R227",
+    "R228"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsesrCrystalNames",
+   "step": "announce",
+   "kind": "effect",
+   "label": "ESR crystal names",
+   "help": "",
+   "rules": [
+    "R229",
+    "R230",
+    "R231",
+    "R232",
+    "R233",
+    "R234",
+    "R235",
+    "R236",
+    "R237",
+    "R238",
+    "R239",
+    "R240",
+    "R241",
+    "R242",
+    "R243",
+    "R244",
+    "R245",
+    "R246",
+    "R247",
+    "R248",
+    "R249",
+    "R250",
+    "R251",
+    "R252"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsrunes",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Runes",
+   "help": "",
+   "rules": [
+    "R253",
+    "R254",
+    "R255",
+    "R256",
+    "R257",
+    "R258",
+    "R259",
+    "R260",
+    "R261",
+    "R262",
+    "R263",
+    "R264",
+    "R265",
+    "R266",
+    "R267",
+    "R268",
+    "R269",
+    "R270",
+    "R271"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsmaps",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Maps",
+   "help": "",
+   "rules": [
+    "R272",
+    "R273",
+    "R274",
+    "R275",
+    "R276",
+    "R277",
+    "R278",
+    "R279",
+    "R280",
+    "R281",
+    "R282",
+    "R283",
+    "R284",
+    "R285",
+    "R286",
+    "R287",
+    "R288",
+    "R289",
+    "R290",
+    "R291",
+    "R292"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsotherItems",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Other items",
+   "help": "",
+   "rules": [
+    "R293",
+    "R294",
+    "R295",
+    "R296",
+    "R297",
+    "R298",
+    "R299"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsclassJewelleryCharmsAndRareJewellery",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Class jewellery, charms and rare jewellery",
+   "help": "",
+   "rules": [
+    "R300",
+    "R301",
+    "R302",
+    "R303"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelscraftedAndTempered",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Crafted and tempered",
+   "help": "",
+   "rules": [
+    "R304",
+    "R305"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsrunewordBases",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Runeword bases",
+   "help": "",
+   "rules": [
+    "R306",
+    "R307",
+    "R308"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "highlightsAndLabelsetherealMythicals",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Ethereal mythicals",
+   "help": "",
+   "rules": [
+    "R309"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "nameShorteningorgans",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Name Shortening: Organs",
+   "help": "",
+   "rules": [
+    "R310",
+    "R311",
+    "R312",
+    "R313",
+    "R314",
+    "R315",
+    "R316",
+    "R317",
+    "R318",
+    "R319",
+    "R320",
+    "R321"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "nameShorteningnormalCoupons",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Name Shortening: Normal coupons",
+   "help": "",
+   "rules": [
+    "R322",
+    "R323",
+    "R324",
+    "R325",
+    "R326",
+    "R327",
+    "R328",
+    "R329",
+    "R330",
+    "R331",
+    "R332",
+    "R333",
+    "R334",
+    "R335",
+    "R336",
+    "R337",
+    "R338",
+    "R339",
+    "R340",
+    "R341",
+    "R342",
+    "R343",
+    "R344",
+    "R345",
+    "R346",
+    "R347",
+    "R348",
+    "R349",
+    "R350",
+    "R351",
+    "R352",
+    "R353",
+    "R354",
+    "R355",
+    "R356",
+    "R357",
+    "R358",
+    "R359",
+    "R360",
+    "R361",
+    "R362",
+    "R363",
+    "R364",
+    "R365",
+    "R366",
+    "R367",
+    "R368",
+    "R369",
+    "R370",
+    "R371",
+    "R372",
+    "R373",
+    "R374",
+    "R375",
+    "R376",
+    "R377",
+    "R378",
+    "R379",
+    "R380",
+    "R381",
+    "R382",
+    "R383",
+    "R384",
+    "R385",
+    "R386",
+    "R387",
+    "R388",
+    "R389",
+    "R390",
+    "R391",
+    "R392",
+    "R393",
+    "R394",
+    "R395",
+    "R396",
+    "R397",
+    "R398",
+    "R399",
+    "R400",
+    "R401",
+    "R402",
+    "R403",
+    "R404",
+    "R405",
+    "R406",
+    "R407",
+    "R408",
+    "R409",
+    "R410",
+    "R411",
+    "R412",
+    "R413",
+    "R414",
+    "R415",
+    "R416",
+    "R417",
+    "R418",
+    "R419",
+    "R420",
+    "R421",
+    "R422",
+    "R423",
+    "R424",
+    "R425",
+    "R426",
+    "R427",
+    "R428",
+    "R429",
+    "R430",
+    "R431",
+    "R432",
+    "R433",
+    "R434",
+    "R435",
+    "R436",
+    "R437",
+    "R438",
+    "R439",
+    "R440",
+    "R441",
+    "R442",
+    "R443",
+    "R444",
+    "R445"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "nameShorteningexceptionalCoupons",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Name Shortening: Exceptional coupons",
+   "help": "",
+   "rules": [
+    "R446",
+    "R447",
+    "R448",
+    "R449",
+    "R450",
+    "R451",
+    "R452",
+    "R453",
+    "R454",
+    "R455",
+    "R456",
+    "R457",
+    "R458",
+    "R459",
+    "R460",
+    "R461",
+    "R462",
+    "R463",
+    "R464",
+    "R465",
+    "R466",
+    "R467",
+    "R468",
+    "R469",
+    "R470",
+    "R471",
+    "R472",
+    "R473",
+    "R474",
+    "R475",
+    "R476",
+    "R477",
+    "R478",
+    "R479",
+    "R480",
+    "R481",
+    "R482",
+    "R483",
+    "R484",
+    "R485",
+    "R486",
+    "R487",
+    "R488",
+    "R489",
+    "R490",
+    "R491",
+    "R492",
+    "R493",
+    "R494",
+    "R495",
+    "R496",
+    "R497",
+    "R498",
+    "R499",
+    "R500",
+    "R501",
+    "R502",
+    "R503",
+    "R504",
+    "R505",
+    "R506",
+    "R507",
+    "R508",
+    "R509",
+    "R510",
+    "R511",
+    "R512",
+    "R513",
+    "R514",
+    "R515",
+    "R516",
+    "R517",
+    "R518",
+    "R519",
+    "R520",
+    "R521",
+    "R522",
+    "R523",
+    "R524",
+    "R525",
+    "R526",
+    "R527",
+    "R528",
+    "R529",
+    "R530",
+    "R531",
+    "R532",
+    "R533",
+    "R534",
+    "R535",
+    "R536",
+    "R537",
+    "R538",
+    "R539",
+    "R540",
+    "R541",
+    "R542",
+    "R543",
+    "R544",
+    "R545",
+    "R546",
+    "R547",
+    "R548",
+    "R549",
+    "R550",
+    "R551",
+    "R552",
+    "R553",
+    "R554",
+    "R555",
+    "R556",
+    "R557",
+    "R558",
+    "R559",
+    "R560",
+    "R561",
+    "R562",
+    "R563",
+    "R564",
+    "R565",
+    "R566",
+    "R567",
+    "R568",
+    "R569",
+    "R570",
+    "R571",
+    "R572",
+    "R573",
+    "R574",
+    "R575",
+    "R576",
+    "R577",
+    "R578",
+    "R579",
+    "R580",
+    "R581",
+    "R582",
+    "R583",
+    "R584"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "nameShorteningeliteCoupons",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Name Shortening: Elite coupons",
+   "help": "",
+   "rules": [
+    "R585",
+    "R586",
+    "R587",
+    "R588",
+    "R589",
+    "R590",
+    "R591",
+    "R592",
+    "R593",
+    "R594",
+    "R595",
+    "R596",
+    "R597",
+    "R598",
+    "R599",
+    "R600",
+    "R601",
+    "R602",
+    "R603",
+    "R604",
+    "R605",
+    "R606",
+    "R607",
+    "R608",
+    "R609",
+    "R610",
+    "R611",
+    "R612",
+    "R613",
+    "R614",
+    "R615",
+    "R616",
+    "R617",
+    "R618",
+    "R619",
+    "R620",
+    "R621",
+    "R622",
+    "R623",
+    "R624",
+    "R625",
+    "R626",
+    "R627",
+    "R628",
+    "R629",
+    "R630",
+    "R631",
+    "R632",
+    "R633",
+    "R634",
+    "R635",
+    "R636",
+    "R637",
+    "R638",
+    "R639",
+    "R640",
+    "R641",
+    "R642",
+    "R643",
+    "R644",
+    "R645",
+    "R646",
+    "R647",
+    "R648",
+    "R649",
+    "R650",
+    "R651",
+    "R652",
+    "R653",
+    "R654",
+    "R655",
+    "R656",
+    "R657",
+    "R658",
+    "R659",
+    "R660",
+    "R661",
+    "R662",
+    "R663",
+    "R664",
+    "R665",
+    "R666",
+    "R667",
+    "R668",
+    "R669",
+    "R670",
+    "R671",
+    "R672",
+    "R673",
+    "R674",
+    "R675",
+    "R676",
+    "R677",
+    "R678",
+    "R679",
+    "R680",
+    "R681",
+    "R682",
+    "R683",
+    "R684",
+    "R685",
+    "R686",
+    "R687",
+    "R688",
+    "R689",
+    "R690",
+    "R691",
+    "R692",
+    "R693",
+    "R694",
+    "R695",
+    "R696",
+    "R697",
+    "R698",
+    "R699",
+    "R700",
+    "R701",
+    "R702",
+    "R703",
+    "R704",
+    "R705",
+    "R706"
+   ],
+   "rows": false,
+   "minimal": true
+  },
+  {
+   "key": "nameShorteningdecals",
+   "step": "announce",
+   "kind": "effect",
+   "label": "Name Shortening: Decals",
+   "help": "",
+   "rules": [
+    "R707",
+    "R708",
+    "R709",
+    "R710",
+    "R711",
+    "R712",
+    "R713",
+    "R714",
+    "R715",
+    "R716",
+    "R717",
+    "R718",
+    "R719",
+    "R720",
+    "R721",
+    "R722",
+    "R723",
+    "R724",
+    "R725",
+    "R726",
+    "R727",
+    "R728"
+   ],
+   "rows": false,
+   "minimal": true
+  }
+ ],
+ "looks": [
+  {
+   "style": "EtherealMythical",
+   "label": "Ethereal Mythicals"
+  },
+  {
+   "style": "Mythical",
+   "label": "Mythicals"
+  },
+  {
+   "style": "Jackpot",
+   "label": "Jackpot finds"
+  },
+  {
+   "style": "PurpleRune",
+   "label": "Purple ESR runes"
+  },
+  {
+   "style": "STierMaterial",
+   "label": "S-tier materials"
+  },
+  {
+   "style": "Valuable",
+   "label": "Valuables"
+  },
+  {
+   "style": "AffixMax",
+   "label": "Top rolls"
+  },
+  {
+   "style": "AffixGood",
+   "label": "Good rolls"
+  },
+  {
+   "style": "Currency",
+   "label": "Currency"
+  },
+  {
+   "style": "GoldPlate",
+   "label": "Gold-plated items"
+  },
+  {
+   "style": "UniqueLabel",
+   "label": "Uniques"
+  },
+  {
+   "style": "SetLabel",
+   "label": "Set items"
+  },
+  {
+   "style": "Uber",
+   "label": "Uber items"
+  },
+  {
+   "style": "MapTier1",
+   "label": "Tier 1 maps"
+  },
+  {
+   "style": "Map",
+   "label": "Maps"
+  },
+  {
+   "style": "MapTier5",
+   "label": "Tier 5 maps"
+  },
+  {
+   "style": "MidRune",
+   "label": "Mid runes"
+  },
+  {
+   "style": "CharmLabel",
+   "label": "Charms"
+  },
+  {
+   "style": "RareJewelry",
+   "label": "Rare jewellery"
+  },
+  {
+   "style": "BaseSockets",
+   "label": "Socketed bases"
+  },
+  {
+   "style": "BaseTop",
+   "label": "Top bases"
+  },
+  {
+   "style": "QuestLabel",
+   "label": "Quest items"
+  },
+  {
+   "style": "CraftedLabel",
+   "label": "Crafted items"
+  },
+  {
+   "style": "TemperedLabel",
+   "label": "Tempered items"
+  }
+ ]
+}

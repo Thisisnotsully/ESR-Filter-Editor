@@ -223,7 +223,7 @@ auto RuleTitle(int ruleNumber, bool* tooLong = nullptr) -> std::string {
 
 // A title that starts with the rule's own id ("R274 | ...", "U003 | ...") names the rule by itself.
 auto TitleHasId(const std::string& title) -> bool {
-    if (title.size() < 2 || (title[0] != 'R' && title[0] != 'U')) return false;
+    if (title.size() < 2 || (title[0] != 'R' && title[0] != 'U' && title[0] != 'W')) return false;
     std::size_t i = 1;
     while (i < title.size() && title[i] >= '0' && title[i] <= '9') ++i;
     return i > 1 && (i == title.size() || title[i] == ' ' || title[i] == '|');
@@ -527,6 +527,7 @@ auto EditorFolders() -> esrfe::edit::Folders {
     }
     if (folders.user.empty()) folders.user = DefaultUserFolder();
     folders.shipped = Utf8(PluginDir.parent_path().parent_path() / L"LootFilters");
+    folders.starter = Utf8(DataDir / L"new-filter");  // installed with the editor (data\new-filter)
     return folders;
 }
 
@@ -975,7 +976,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.7.0",
+    .version     = "0.8.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,

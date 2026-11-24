@@ -28,6 +28,7 @@ namespace esrfe::edit {
 struct Folders {
     std::string user;     // the loot filter's filters folder (UTF-8)
     std::string shipped;  // <mod>\LootFilters
+    std::string starter;  // the new-filter wizard's starter (<plugins>\esr-filter-editor\new-filter)
 };
 
 // "repo:QoL-Filter/Sullys-QoL-Filter.json" -> the file; "" for an id the loot filter would not take.

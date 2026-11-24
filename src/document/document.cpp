@@ -15,10 +15,11 @@ auto Trim(std::string_view s) -> std::string_view {
     return s;
 }
 
-// "R001" from "R001 | ...": R or U, digits, then the end or a non-alphanumeric.
+// "R001" from "R001 | ...": R (an author's), U (the player's own) or W (a step added in the new-filter questions),
+// digits, then the end or a non-alphanumeric.
 auto RuleId(std::string_view title) -> std::string {
     title = Trim(title);
-    if (title.size() < 2 || (title[0] != 'R' && title[0] != 'U')) return {};
+    if (title.size() < 2 || (title[0] != 'R' && title[0] != 'U' && title[0] != 'W')) return {};
     std::size_t i = 1;
     while (i < title.size() && title[i] >= '0' && title[i] <= '9') ++i;
     if (i == 1) return {};

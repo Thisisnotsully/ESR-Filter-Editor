@@ -113,6 +113,11 @@ auto PathOfId(const std::string& id, const Folders& folders) -> std::string {
         folder = P(folders.shipped);
     } else if (where == "user") {
         folder = P(folders.user);
+    } else if (where == "made") {  // a filter the player made with the new-filter questions: its own folder
+        if (file.size() <= 5 || !file.ends_with(".json")) return {};
+        const std::string name = file.substr(0, file.size() - 5);
+        if (!PlainName(name)) return {};
+        folder = P(folders.user) / kEditorFolder / "made" / P(name);
     } else if (where == "repo") {
         const std::size_t slash = file.find('/');
         if (slash == std::string::npos) return {};

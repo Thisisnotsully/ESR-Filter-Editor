@@ -172,6 +172,7 @@ private:
     overlay::Label filterLabel_;
     overlay::Dropdown filter_;
     std::vector<edit::FilterChoice> filters_;
+    int filterChosen_ = -1;    // the filter in use in the drop-down (the last entry opens the new-filter questions)
     std::string switching_;    // the filter asked for, until the loot filter has it
     std::string switchError_;  // the last switch failed: why
     overlay::Button gameSettings_;

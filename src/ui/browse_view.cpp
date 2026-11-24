@@ -6,6 +6,7 @@
 
 #include "add_rule_view.hpp"
 #include "item_rules_view.hpp"
+#include "new_filter_view.hpp"
 #include "version_name_view.hpp"
 #include "rule_draft.h"
 #include "rule_view.hpp"
@@ -428,12 +429,26 @@ void BrowseView::RebuildFilters(const std::string& activeId) {
         filter_.options.insert(filter_.options.begin(), activeId);
         filter_.selected = 0;
     }
-    filter_.visible = !filters_.empty();
+    filter_.options.push_back(UiText("+ New filter…"));  // the new-filter questions
+    filter_.visible = !source_->Folders().user.empty();
     filterLabel_.visible = filter_.visible;
+    filterChosen_ = filter_.selected;
 }
 
 void BrowseView::ChooseFilter(int index, Ui& ui) {
+    if (index == static_cast<int>(filters_.size())) {  // "+ New filter…"
+        filter_.selected = filterChosen_;
+        std::shared_ptr<bool> alive = alive_;
+        ui.PushView(std::make_shared<NewFilterView>(source_, [this, alive](Ui& u, const std::string& id) {
+            if (!*alive) return;
+            switchError_.clear();
+            switching_ = id;
+            WaitForFilter(id, u.Now() + 4000, u);
+        }));
+        return;
+    }
     if (index < 0 || index >= static_cast<int>(filters_.size())) return;
+    filterChosen_ = index;
     const std::string id = filters_[static_cast<std::size_t>(index)].id;
     std::string error;
     if (!edit::SelectFilter(source_->Folders(), id, error)) {

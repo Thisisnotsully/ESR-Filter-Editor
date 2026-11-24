@@ -177,3 +177,18 @@ Build and install with `build-and-install.bat` (game and launcher closed).
 - [ ] **Filter** drop-down in the top bar (where the level was): every filter the loot filter can load (yours, the repository ones, the mod's), the one in use chosen. Choosing another switches the game to it; the editor shows it a moment later. The line under the bar names the level in use, and rules off on that level stay grey.
 - [ ] **Filter volume** on the main window: drag it, or Left / Right, or the D-pad. It is saved in your version when you let go (the first time it asks to make your version; no puts it back) and plays a sound at the new volume. **Test** plays it again. The volume is the filter's `soundVolume`: every sound of the filter gets louder or quieter.
 - [ ] Your version's file: a "My Rules" part first (your shows, the show-only copy of each Show / Always Show rule with a look, then your hides) and a "My Highlights" part last.
+
+## Milestone 5: a new filter from scratch (test build)
+
+Build and install with `build-and-install.bat` (it now also copies `data\new-filter` into `esr-filter-editor\new-filter` next to the DLL).
+
+- [ ] **Filter** drop-down → **+ New filter…** opens the questions. The drop-down itself stays on the filter in use. The step chips jump between the ten steps; LB / RB go back and forth.
+- [ ] 1 Name: a name ("My filter", or "My filter 2" when taken) and an author. A name that cannot be a file name, or one you already use, shows why under it and Create stays off. Start from **Recommended** (everything Sully's filter does) or **Minimal** (the valuables always shown, little hidden).
+- [ ] 2 Levels: 1 to 5 levels; keep Sully's names (their translations stay) or type your own; the level a new character starts on.
+- [ ] 3-7 the parts (Always show, Gold and potions, Gems and odds and ends, Gear, Uniques sets jewellery coupons, Announcements and labels). Each part is a line with a tick (click to choose it, Enter or A turns it on or off); its steps are under it. Choose a step: on or off, from level / to level, from character level, gold amount (gold steps), in towns too (hide steps). **+ Add a step like this** adds a copy below it (yours: **Remove this step**).
+- [ ] 8 Look: a label style on the left (Uniques, Set items, Mythicals, Mid runes, ...), its border, background and light beam (a colour button, **As it is**, or **Any colour for** with the colour square). The picture shows it. Filter volume with **Test**.
+- [ ] 9 Check: the filter in words and its rule count. **Create the filter**: the game switches to it, the editor shows it, and it is in the Filter list under its name.
+- [ ] In game: the new filter works like Sully's (Recommended, nothing changed). With 3 levels, the level-4-only rules are gone; the levels menu shows your names.
+- [ ] Sounds play (copied from Sully's filter). Icons show when Sully's QoL-Filter folder is installed; without it the filter has no icons, and no errors.
+- [ ] The made filter takes your own rules and changes like any of your versions (it needs no naming: it is yours).
+
