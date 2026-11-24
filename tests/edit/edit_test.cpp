@@ -313,10 +313,10 @@ int main(int argc, char** argv) {
         CHECK(StemOfId("user:Sullys-QoL-Filter (my version).json") == "Sullys-QoL-Filter");
 
         Session session;
-        std::string error;
+        std::string error, text0;
         CHECK(session.Open(repoId, PathOfId(repoId, folders), folders, error));
         CHECK(!session.IsCopy() && !session.HasChanges());
-        CHECK(session.MergedId() == "user:Sullys-QoL-Filter (my version).json");
+        CHECK(session.NeedsName() && session.MergedId().empty());
         session.SetOff("R303", true);
         session.SetItem("R099", "itemCodes", gem, true);
         CHECK(session.IsOff("R303"));
@@ -325,8 +325,17 @@ int main(int argc, char** argv) {
         CHECK(Read(session.ViewText(), view));
         CHECK(view.FindRule("R303") >= 0);  // off rules stay in what the editor shows
         bool switched = false;
+        CHECK(!session.Save(error, switched));  // no name yet
+        // The name: a file name, not used yet.
+        CHECK(SuggestVersionName(folders, "Sully's QoL Filter") == "Sully's QoL Filter (my version)");
+        for (const char* bad : {"", " x", "x.", "a/b", "a:b", "a..b", "selection", "a?b"}) CHECK(!CheckVersionName(folders, bad, error));
+        CHECK(!session.NameVersion("a|b", error) && session.NeedsName());
+        CHECK(session.NameVersion("Sullys-QoL-Filter (my version)", error));
+        CHECK(!session.NeedsName() && session.MergedId() == "user:Sullys-QoL-Filter (my version).json");
         CHECK(session.Save(error, switched));
         if (!error.empty()) std::printf("  save: %s\n", error.c_str());
+        CHECK(!CheckVersionName(folders, "Sullys-QoL-Filter (my version)", error));  // taken now
+        CHECK(ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter (my version).changes.json").string(), text0));
         CHECK(switched && session.IsCopy());
         std::string text;
         CHECK(ReadText((user / "selection.json").string(), text));
@@ -335,6 +344,7 @@ int main(int argc, char** argv) {
         CHECK(ReadText(session.MergedPath(), text));
         CHECK(Read(text, copy));
         CHECK(copy.FindRule("R303") < 0 && copy.ActiveCount() == base.ActiveCount() - 1);
+        CHECK(copy.GetSettings().title == "Sullys-QoL-Filter (my version)");  // its name
         CHECK(ReadText((user / "sounds" / "gong.mp3").string(), text) && text == "GONG");
         CHECK(ReadText((user / "icons" / "gem.sprite").string(), text) && text == "GEM");
         CHECK(ReadText((user / "sounds" / "tink.mp3").string(), text) && text == "SOMEONE ELSE'S");
@@ -358,10 +368,32 @@ int main(int argc, char** argv) {
         CHECK(!again.IsOff("R303"));
         CHECK(again.Save(error, switched) && !switched);
 
-        // The player went back to Sully's filter in the launcher: the changes are still theirs.
+        // The player went back to Sully's filter: a change there makes another version, the first one stays as it is.
         Session back;
         CHECK(back.Open(repoId, PathOfId(repoId, folders), folders, error));
-        CHECK(!back.IsCopy() && back.HasChanges());
+        CHECK(!back.IsCopy() && !back.HasChanges() && back.NeedsName() && !back.IsOff("R303"));
+        CHECK(VersionsOf(folders, repoId).size() == 1 && VersionsOf(folders, repoId)[0].id == session.MergedId());
+        CHECK(SuggestVersionName(folders, "Sullys-QoL-Filter") == "Sullys-QoL-Filter (my version 2)");
+        back.SetOff("R001", true);
+        CHECK(back.NameVersion("Rune farming", error));
+        CHECK(back.Save(error, switched) && switched && back.IsCopy());
+        CHECK(VersionsOf(folders, repoId).size() == 2);
+        {
+            Session first;
+            CHECK(first.Open(session.MergedId(), session.MergedPath(), folders, error));
+            CHECK(first.IsCopy() && !first.IsOff("R001"));  // untouched
+            Session second;
+            CHECK(second.Open("user:Rune farming.json", (user / "Rune farming.json").string(), folders, error));
+            CHECK(second.IsCopy() && second.IsOff("R001") && !second.IsOff("R303"));
+            std::string t;
+            document::Document d;
+            CHECK(ReadText((user / "Rune farming.json").string(), t) && Read(t, d) && d.GetSettings().title == "Rune farming");
+            const std::vector<FilterChoice> choices = ListFilters(folders);
+            int mine = 0;
+            for (const FilterChoice& c : choices) mine += c.mine ? 1 : 0;
+            CHECK(mine == 2);
+        }
+        CHECK(SelectFilter(folders, session.MergedId(), error));
 
         // Sully updates: R099's levels change (the player did not change them), the copy follows at the next start.
         {
@@ -370,7 +402,8 @@ int main(int argc, char** argv) {
             CHECK(updated.SetField(updated.FindRule("R099"), "activeInLevels", Ints({1, 4})));
             CHECK(WriteText((repo / "Sullys-QoL-Filter.json").string(), updated.Text()));
             const auto updates = UpdateCopies(folders);
-            CHECK(updates.size() == 1 && updates[0].updated && updates[0].conflicts == 0);
+            CHECK(updates.size() == 2);  // both versions follow
+            for (const auto& u : updates) CHECK(u.updated && u.conflicts == 0);
             CHECK(ReadText(session.MergedPath(), text) && Read(text, copy));
             CHECK(*RuleOf(copy, "R099")->Find("activeInLevels") == Ints({1, 4}));
             CHECK(RuleOf(copy, "R099")->Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
@@ -391,7 +424,8 @@ int main(int argc, char** argv) {
             CHECK(WriteText((repo / "Sullys-QoL-Filter.json").string(), updated.Text()));
             const auto updates = UpdateCopies(folders);
             // The player removed "hide" and so did Sully: the same, no conflict.
-            CHECK(updates.size() == 1 && updates[0].conflicts == 0);
+            CHECK(updates.size() == 2);
+            for (const auto& u : updates) CHECK(u.conflicts == 0);
         }
         // The filters to choose from: the repository's (it has .esr-repo.json), the player's version, a shipped one;
         // not the editor's changes, not a JSON file that is no filter, not a folder that is no repository.
@@ -405,13 +439,14 @@ int main(int argc, char** argv) {
             const std::vector<FilterChoice> filters = ListFilters(folders);
             std::vector<std::string> ids;
             for (const FilterChoice& f : filters) ids.push_back(f.id);
-            CHECK(ids.size() == 3);
+            CHECK(ids.size() == 4);  // both versions
             CHECK(std::find(ids.begin(), ids.end(), repoId) != ids.end());
             CHECK(std::find(ids.begin(), ids.end(), "user:Sullys-QoL-Filter (my version).json") != ids.end());
             CHECK(std::find(ids.begin(), ids.end(), "shipped:Plain.json") != ids.end());
             for (const FilterChoice& f : filters) {
                 if (f.id == repoId) CHECK(f.title == "Sully's QoL Filter" && !f.mine);
-                if (f.id.starts_with("user:")) CHECK(f.mine && f.title.find("Sully") != std::string::npos);
+                if (f.id.starts_with("user:")) CHECK(f.mine);
+                if (f.id == "user:Rune farming.json") CHECK(f.title == "Rune farming");
                 if (f.id == "shipped:Plain.json") CHECK(f.title == "Plain");
             }
             std::string error, selection;

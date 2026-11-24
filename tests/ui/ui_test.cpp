@@ -16,6 +16,7 @@
 #include "fakes.hpp"
 #include "add_rule_view.hpp"
 #include "item_rules_view.hpp"
+#include "version_name_view.hpp"
 #include "rule_draft.h"
 #include "rule_text.h"
 #include "rule_view.hpp"
@@ -496,29 +497,38 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                 cardForm.Mouse(up);
                 layout();
             };
-            const auto pressEnter = [&] {
-                esrfe::overlay::KeyEvent k;
-                k.key = esrfe::overlay::Key::Enter;
-                cardForm.KeyDown(k);
-                layout();
-            };
             layout();
             CHECK(card->Editable());
             CHECK(card->HideChip().visible && card->HideChip().selected);
             CHECK(card->LevelCount() == data->doc.GetSettings().filterLevels.size());
-            // The first change asks; cancelling changes nothing.
+            // The first change asks for the version's name; cancelling changes nothing.
+            const auto naming = [&]() -> std::shared_ptr<VersionNameView> {
+                return h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<VersionNameView>(h.platform.pushed.back());
+            };
+            h.platform.pushed.clear();
             click(card->OnSwitch());
-            CHECK(cardForm.DialogOpen());
-            esrfe::overlay::KeyEvent esc;
-            esc.key = esrfe::overlay::Key::Escape;
-            cardForm.KeyDown(esc);
-            CHECK(!cardForm.DialogOpen());
+            auto name = naming();
+            CHECK(name != nullptr && name->Name().Value() == "Sully's QoL Filter (my version)" && name->VersionCount() == 0);
+            if (name == nullptr) return;
+            esrfe::overlay::Form nameForm{h.platform, name};
+            nameForm.Layout(h.client, h.content);
+            name->CancelButton().onClick(nameForm);
             CHECK(card->OnSwitch().on);
-            CHECK(!fs::exists(user / "Sullys-QoL-Filter (my version).json"));
-            // Again, and yes: the copy is made and the game switched to it.
+            CHECK(!data->session->HasChanges() || !fs::exists(user / "Sullys-QoL-Filter (my version).json"));
+            CHECK(!fs::exists(user / "Sully's QoL Filter (my version).json"));
+            // Again: a bad name is refused, a good one makes the copy and switches the game to it.
+            h.platform.pushed.clear();
             click(card->OnSwitch());
-            CHECK(cardForm.DialogOpen());
-            pressEnter();
+            name = naming();
+            CHECK(name != nullptr);
+            if (name == nullptr) return;
+            esrfe::overlay::Form nameForm2{h.platform, name};
+            nameForm2.Layout(h.client, h.content);
+            name->Name().SetValue("bad/name");
+            name->MakeButton().onClick(nameForm2);
+            CHECK(!name->Problem().empty() && !fs::exists(user / "bad"));
+            name->Name().SetValue("Sullys-QoL-Filter (my version)");
+            name->MakeButton().onClick(nameForm2);
             CHECK(!card->OnSwitch().on);
             CHECK(card->Status().find("now uses your version") != std::string::npos);
             CHECK(fs::exists(user / "Sullys-QoL-Filter (my version).json"));
@@ -541,7 +551,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             // Level 4 too.
             click(card->LevelBox(level3 + 1 < card->LevelCount() ? level3 + 1 : 0));
             std::string saved;
-            CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved));
+            CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter (my version).changes.json").string(), saved));
             edit::ChangeSet changes;
             std::string why;
             CHECK(edit::Parse(saved, changes, why));
@@ -709,7 +719,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         // Saved: the changes and the game's copy.
         {
             std::string saved, error;
-            CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved));
+            CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter (my version).changes.json").string(), saved));
             edit::ChangeSet changes;
             CHECK(edit::Parse(saved, changes, error));
             CHECK(changes.own.size() == 1 && changes.own[0].id == "U001" && changes.own[0].place == "end" && changes.own[0].keepShown);
@@ -760,7 +770,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                 again->Finish().onClick(af);
                 std::string saved, error;
                 edit::ChangeSet changes;
-                CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved) && edit::Parse(saved, changes, error));
+                CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter (my version).changes.json").string(), saved) && edit::Parse(saved, changes, error));
                 CHECK(changes.own.size() == 1 && changes.own[0].id == "U001");  // the same rule, changed
                 RuleDraft d;
                 CHECK(changes.own.size() == 1 && FromRule(changes.own[0].rule, *data->game, d) && d.look.border == Swatches()[0].rgb);
@@ -851,7 +861,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         CHECK(h.source->played.size() == 1 && h.source->played[0].second == 40);  // 80 x 50%
         std::string saved, error;
         edit::ChangeSet changes;
-        CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved) && edit::Parse(saved, changes, error));
+        CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter (my version).changes.json").string(), saved) && edit::Parse(saved, changes, error));
         bool has = false;
         for (const document::Member& m : changes.settings) {
             std::int64_t v = 0;
@@ -899,7 +909,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         h.Run();
         CHECK(!h.form.DialogOpen());
         std::string saved;
-        CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved));
+        CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter (my version).changes.json").string(), saved));
         edit::ChangeSet changes;
         CHECK(edit::Parse(saved, changes, error));
         CHECK(changes.baseHash == edit::Hash(newer));
@@ -914,6 +924,35 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         h.source->info.textHash += 1;
         h.Show();
         CHECK(!h.form.DialogOpen());
+    }
+
+    // Back on Sully's filter, a change: the version the player has is offered, and the change goes into it.
+    {
+        h.source->info.filterId = "repo:QoL-Filter/Sullys-QoL-Filter.json";
+        h.source->info.path = (user / "QoL-Filter" / "Sullys-QoL-Filter.json").string();
+        h.source->Put(filterText);
+        h.Refresh(true);
+        Loaded* now = const_cast<Loaded*>(h.view->Data());
+        CHECK(now != nullptr && now->session != nullptr && now->session->NeedsName());
+        if (now != nullptr && now->session != nullptr) {
+            std::shared_ptr<Loaded> keep(std::shared_ptr<Loaded>{}, now);
+            auto alive = std::make_shared<bool>(true);
+            bool saved = false;
+            h.platform.pushed.clear();
+            CommitChange(h.form, keep, alive, [](edit::Session& s) { s.SetOff("R002", true); },
+                         [&saved](Ui&, bool ok, bool, const std::string&) { saved = ok; }, nullptr);
+            auto name = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<VersionNameView>(h.platform.pushed.back());
+            CHECK(name != nullptr && name->VersionCount() == 1);
+            if (name != nullptr && name->VersionCount() == 1) {
+                CHECK(name->Name().Value() == "Sully's QoL Filter (my version)");  // a new name still offered
+                name->VersionButton(0).onClick(h.form);
+                CHECK(saved && now->session->IsCopy() && now->session->IsOff("R002"));
+                CHECK(now->session->MergedId() == "user:Sullys-QoL-Filter (my version).json");
+                std::string selection;
+                CHECK(edit::ReadText((user / "selection.json").string(), selection) &&
+                      selection.find("\"activeFilter\": \"user:Sullys-QoL-Filter (my version).json\"") != std::string::npos);
+            }
+        }
     }
 
     // A broken file.

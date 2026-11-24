@@ -69,6 +69,7 @@ struct ChangeSet {
     std::int64_t formatVersion = 1;
     std::string base;         // the author's filter: the loot filter's id ("repo:QoL-Filter/Sullys-QoL-Filter.json")
     std::string merged;       // the player's copy: "user:Sullys-QoL-Filter (my version).json"
+    std::string title;        // the copy's title, the name the player gave it; "" (older copies): the author's + " (my version)"
     std::string baseVersion;  // the author's version at the last merge
     std::uint64_t baseHash = 0;  // Hash of the author's file at the last merge
     std::vector<RuleChange> rules;

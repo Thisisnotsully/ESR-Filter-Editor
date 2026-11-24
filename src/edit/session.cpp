@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <cctype>
 #include <set>
 #include <sstream>
 
@@ -27,7 +28,29 @@ auto PlainName(const std::string& name) -> bool {
     return !name.empty() && name.find_first_of("\\/:") == std::string::npos && name.find("..") == std::string::npos;
 }
 
-auto CopyId(const std::string& stem) -> std::string { return "user:" + stem + std::string(kCopySuffix) + ".json"; }
+
+// Every changes file the editor keeps, read: the player's versions (a version is found by the copy it makes).
+struct SavedVersion {
+    std::string path;
+    ChangeSet changes;
+};
+auto SavedVersions(const std::string& userFolder) -> std::vector<SavedVersion> {
+    std::vector<SavedVersion> out;
+    std::error_code ec;
+    const fs::path folder = P(userFolder) / kEditorFolder;
+    if (userFolder.empty() || !fs::is_directory(folder, ec)) return out;
+    for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec)) {
+        const std::string name = U(entry.path().filename());
+        if (!entry.is_regular_file(ec) || !name.ends_with(".changes.json")) continue;
+        std::string text, why;
+        SavedVersion v;
+        v.path = U(entry.path());
+        if (!ReadText(v.path, text) || !edit::Parse(text, v.changes, why) || v.changes.merged.empty()) continue;
+        out.push_back(std::move(v));
+    }
+    std::sort(out.begin(), out.end(), [](const SavedVersion& a, const SavedVersion& b) { return a.path < b.path; });
+    return out;
+}
 
 auto SameFile(const fs::path& a, const fs::path& b) -> bool {
     std::error_code ec;
@@ -133,10 +156,12 @@ auto ListFilters(const Folders& folders) -> std::vector<FilterChoice> {
             c.path = U(entry.path());
             const document::Value* title = root.Find("title");
             c.title = title != nullptr && title->IsString() && !title->Str().empty() ? title->Str() : name.substr(0, name.size() - 5);
-            c.mine = name.ends_with(std::string(kCopySuffix) + ".json");
+            c.mine = false;
             out.push_back(std::move(c));
         }
     };
+    std::set<std::string> versions;
+    for (const SavedVersion& v : SavedVersions(folders.user)) versions.insert(v.changes.merged);
     scan(P(folders.shipped), "shipped:");
     scan(P(folders.user), "user:");
     std::error_code ec;
@@ -146,8 +171,76 @@ auto ListFilters(const Folders& folders) -> std::vector<FilterChoice> {
             scan(entry.path(), "repo:" + U(entry.path().filename()) + "/");
         }
     }
+    for (FilterChoice& c : out) c.mine = versions.count(c.id) != 0;
     std::sort(out.begin(), out.end(), [](const FilterChoice& a, const FilterChoice& b) { return a.title != b.title ? a.title < b.title : a.id < b.id; });
     return out;
+}
+
+auto VersionsOf(const Folders& folders, const std::string& baseId) -> std::vector<Version> {
+    std::vector<Version> out;
+    for (const SavedVersion& v : SavedVersions(folders.user)) {
+        if (v.changes.base != baseId) continue;
+        Version version;
+        version.id = v.changes.merged;
+        version.title = v.changes.title.empty() ? StemOfId(v.changes.merged) + std::string(kCopySuffix) : v.changes.title;
+        out.push_back(std::move(version));
+    }
+    return out;
+}
+
+auto CheckVersionName(const Folders& folders, const std::string& name, std::string& error) -> bool {
+    std::string trimmed = name;
+    while (!trimmed.empty() && (trimmed.back() == ' ' || trimmed.back() == '.')) trimmed.pop_back();
+    while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(0, 1);
+    if (trimmed.empty()) {
+        error = "Give it a name.";
+        return false;
+    }
+    if (trimmed != name) {
+        error = "A name cannot start with a space or end with a space or a dot.";
+        return false;
+    }
+    if (name.size() > 80) {
+        error = "That name is too long (80 letters at most).";
+        return false;
+    }
+    if (name.find_first_of("\\/:*?\"<>|") != std::string::npos || name.find("..") != std::string::npos) {
+        error = "A name cannot have \\ / : * ? \" < > | or two dots in it.";
+        return false;
+    }
+    for (unsigned char ch : name)
+        if (ch < 32) {
+            error = "That name has a character a file name cannot have.";
+            return false;
+        }
+    std::error_code ec;
+    const std::string lower = [&name] {
+        std::string l = name;
+        for (char& ch : l) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        return l;
+    }();
+    for (const char* reserved : {"selection", "con", "prn", "aux", "nul", "com1", "lpt1"})
+        if (lower == reserved) {
+            error = "That name is kept for something else.";
+            return false;
+        }
+    if (fs::exists(P(folders.user) / P(name + ".json"), ec) || fs::exists(P(folders.user) / kEditorFolder / P(name + ".changes.json"), ec)) {
+        error = "You already have a filter with that name.";
+        return false;
+    }
+    return true;
+}
+
+auto SuggestVersionName(const Folders& folders, const std::string& baseTitle) -> std::string {
+    std::string base = baseTitle.empty() ? std::string("My filter") : baseTitle;
+    for (char& ch : base)
+        if (std::string_view("\\/:*?\"<>|").find(ch) != std::string_view::npos) ch = '-';
+    std::string error;
+    for (int n = 1; n < 100; ++n) {
+        const std::string name = base + (n == 1 ? std::string(" (my version)") : " (my version " + std::to_string(n) + ")");
+        if (CheckVersionName(folders, name, error)) return name;
+    }
+    return base + " (my version)";
 }
 
 auto SelectFilter(const Folders& folders, const std::string& id, std::string& error) -> bool {
@@ -209,38 +302,29 @@ auto Session::Open(const std::string& activeId, const std::string& activePath, c
     *this = Session{};
     folders_ = folders;
     activeId_ = activeId;
-    const std::string stem = StemOfId(activeId);
-    if (stem.empty() || folders.user.empty()) {
+    if (StemOfId(activeId).empty() || folders.user.empty()) {
         error = "the loot filter's filters folder is not known";
         return false;
     }
-    changesPath_ = U(P(folders.user) / kEditorFolder / P(stem + ".changes.json"));
-    const std::string copyId = CopyId(stem);
-    mergedPath_ = PathOfId(copyId, folders);
-
-    std::string saved;
+    // The player's version this is, when it is one: the changes file whose copy the game loads.
     bool haveChanges = false;
-    if (ReadText(changesPath_, saved)) {
-        std::string why;
-        if (!edit::Parse(saved, changes_, why)) {
-            error = "your changes file could not be read (" + why + "): " + changesPath_;
-            return false;
-        }
+    for (SavedVersion& v : SavedVersions(folders.user)) {
+        if (v.changes.merged != activeId) continue;
+        changesPath_ = v.path;
+        changes_ = std::move(v.changes);
         haveChanges = true;
+        break;
     }
-    if (activeId == copyId) {
-        if (!haveChanges) {
-            error = "this copy was made by the editor, but its changes file is missing: " + changesPath_;
-            return false;
-        }
+    if (haveChanges) {
         isCopy_ = true;
         baseId_ = changes_.base;
         basePath_ = PathOfId(baseId_, folders);
+        mergedPath_ = PathOfId(changes_.merged, folders);
+    } else if (activeId.starts_with("user:") && StemOfId(activeId) + std::string(kCopySuffix) + ".json" == activeId.substr(5)) {
+        error = "this copy was made by the editor, but its changes file is missing from " + U(P(folders.user) / kEditorFolder);
+        return false;
     } else {
-        if (haveChanges && changes_.base != activeId) {
-            error = "your changes in " + changesPath_ + " belong to another filter (" + changes_.base + ")";
-            return false;
-        }
+        // A filter of its own (an author's): changes to it make a new version, named at the first save (NameVersion).
         baseId_ = activeId;
         basePath_ = activePath.empty() ? PathOfId(activeId, folders) : activePath;
     }
@@ -257,7 +341,6 @@ auto Session::Open(const std::string& activeId, const std::string& activePath, c
         changes_.base = baseId_;
         changes_.baseHash = Hash(baseText_);
     }
-    changes_.merged = copyId;
     changes_.baseVersion = base_.GetSettings().version;
     if (changes_.baseHash != Hash(baseText_)) {
         // Edits the author has now made too are no longer the player's own.
@@ -414,6 +497,10 @@ void Session::FinishConflicts() {
 
 auto Session::Save(std::string& error, bool& switched) -> bool {
     switched = false;
+    if (changes_.merged.empty()) {
+        error = "your version has no name yet";
+        return false;
+    }
     if (conflicts_.empty()) changes_.baseHash = Hash(baseText_);
     changes_.baseVersion = base_.GetSettings().version;
     const MergeResult merged = Merge(baseText_, changes_, MergeOptions{});
@@ -443,6 +530,19 @@ auto Session::Save(std::string& error, bool& switched) -> bool {
         isCopy_ = true;
         switched = true;
     }
+    return true;
+}
+
+auto Session::NameVersion(const std::string& name, std::string& error) -> bool {
+    if (isCopy_) {
+        error = "this is already one of your versions";
+        return false;
+    }
+    if (!CheckVersionName(folders_, name, error)) return false;
+    changes_.merged = "user:" + name + ".json";
+    changes_.title = name;
+    mergedPath_ = PathOfId(changes_.merged, folders_);
+    changesPath_ = U(P(folders_.user) / kEditorFolder / P(name + ".changes.json"));
     return true;
 }
 

@@ -6,6 +6,7 @@
 
 #include "add_rule_view.hpp"
 #include "item_rules_view.hpp"
+#include "version_name_view.hpp"
 #include "rule_draft.h"
 #include "rule_view.hpp"
 #include "text_fold.hpp"
@@ -594,26 +595,18 @@ void CommitChange(Ui& ui, const std::shared_ptr<Loaded>& loaded, const std::shar
         if (done) done(u, ok, switched, error);
         u.Repaint();
     };
-    if (session.IsCopy() || session.HasChanges()) {
+    if (!session.NeedsName()) {
         run(ui);
         return;
     }
-    // The first change: the player's own version is about to be made.
-    const std::string title = loaded->doc.GetSettings().title.empty() ? UiText("this filter") : loaded->doc.GetSettings().title;
-    overlay::DialogSpec spec;
-    spec.title = "Make your own version?";
-    spec.message = UiFormat("Your changes go into your own copy of the filter, \"{0} (my version)\". The game switches to it now "
-                            "and keeps your filter level.\n\n{1}'s updates still come through: the editor puts your changes on top "
-                            "of each new version.",
-                            {title, loaded->Author()});
-    spec.confirm = "Make my version";
-    spec.confirmIsDefault = true;
-    ui.ShowDialog(spec, [alive, run, cancelled, &ui](bool confirmed) {
-        if (!*alive) return;
-        if (confirmed) run(ui);
-        else if (cancelled) cancelled(ui);
-        ui.Repaint();
-    });
+    // The first change to an author's filter: the player names the version it makes (or picks one they have).
+    ui.PushView(std::make_shared<VersionNameView>(
+        loaded, [alive, run](Ui& u) {
+            if (*alive) run(u);
+        },
+        [alive, cancelled](Ui& u) {
+            if (*alive && cancelled) cancelled(u);
+        }));
 }
 
 void BrowseView::StartRule(Ui& ui, DraftMaker makeDraft, ItemRules item) {

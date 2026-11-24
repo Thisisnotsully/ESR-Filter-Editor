@@ -124,6 +124,7 @@ auto Parse(std::string_view text, ChangeSet& out, std::string& error) -> bool {
     if (const Value* v = root.Find("formatVersion")) v->AsInteger(out.formatVersion);
     out.base = Str(root.Find("base"));
     out.merged = Str(root.Find("merged"));
+    out.title = Str(root.Find("title"));
     out.baseVersion = Str(root.Find("baseVersion"));
     out.baseHash = ParseHex(Str(root.Find("baseHash")));
     if (const Value* rules = root.Find("rules"); rules != nullptr && rules->IsArray()) {
@@ -183,6 +184,7 @@ auto Render(const ChangeSet& c) -> std::string {
     out += "  \"about\": \"Your changes to a loot filter, made with the ESR Filter Editor in game. The editor applies them to the author's filter (base) and writes your copy (merged), which the game loads.\",\n";
     out += "  \"base\": " + EncodeString(c.base) + ",\n";
     out += "  \"merged\": " + EncodeString(c.merged) + ",\n";
+    if (!c.title.empty()) out += "  \"title\": " + EncodeString(c.title) + ",\n";
     out += "  \"baseVersion\": " + EncodeString(c.baseVersion) + ",\n";
     out += "  \"baseHash\": " + EncodeString(HexHash(c.baseHash)) + ",\n";
     if (!c.settings.empty()) {
@@ -467,7 +469,9 @@ auto Merge(std::string_view authorText, const ChangeSet& changes, const MergeOpt
 
     // The copy's own name; no update address (the launcher keeps the author's filter up to date, not this copy).
     const std::string title = doc.GetSettings().title;
-    if (!options.titleSuffix.empty() && (title.size() < options.titleSuffix.size() || !title.ends_with(options.titleSuffix))) {
+    if (!changes.title.empty() && !options.titleSuffix.empty()) {  // named by the player
+        if (const document::Status status = doc.SetSetting("title", Value::String(changes.title)); !status) return fail("the title", status);
+    } else if (!options.titleSuffix.empty() && (title.size() < options.titleSuffix.size() || !title.ends_with(options.titleSuffix))) {
         const document::Status status = doc.SetSetting("title", Value::String(title.empty() ? "Loot filter" + options.titleSuffix : title + options.titleSuffix));
         if (!status) return fail("the title", status);
     }
