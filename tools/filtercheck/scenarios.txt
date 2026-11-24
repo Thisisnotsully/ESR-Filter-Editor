@@ -1,0 +1,40 @@
+# Test items for Sully's QoL Filter. Each change to the filter adds the items it is about.
+# name | code | quality (2 normal 3 superior 4 magic 6 rare 7 unique) | tier (-1 none) | filter level | stats (name=value, ...; unid=1 for unidentified) | expect
+# expect: shown, hidden, match:R123, nomatch:R123 (several, space separated)
+
+# ---- 0.9.4
+# Superior missile weapons: projectile speed
+Superior crossbow, +25% projectile speed      | lxb | 3 | 0 | 4 | projectilespeed=25 | shown match:R697
+Superior bow, +12% projectile speed (L3)      | sbw | 3 | 0 | 3 | projectilespeed=12 | shown match:R698 nomatch:R697
+Superior bow, +12% projectile speed (L4)      | sbw | 3 | 0 | 4 | projectilespeed=12 | hidden nomatch:R698
+# Javelins are not missile weapons in ESR (jave: comb, spea), so they cannot roll projectile speed.
+Superior javelin (cannot roll it)             | jav | 3 | 0 | 4 | projectilespeed=25 | nomatch:R697
+Magic crossbow, +25% projectile speed         | lxb | 4 | 0 | 2 | projectilespeed=25 | nomatch:R697 nomatch:R698
+# Superior crossbows
+Superior crossbow, +1 bolts (-10% damage)     | lxb | 3 | 0 | 4 | totalcrossbowbolts=1,totalcrossbowdamage=-10 | shown match:R699 nomatch:R700 nomatch:R701
+Superior crossbow, +25% total damage          | lxb | 3 | 0 | 4 | totalcrossbowdamage=25 | shown match:R700
+Superior crossbow, +22% total damage (L3)     | lxb | 3 | 0 | 3 | totalcrossbowdamage=22 | shown match:R701 nomatch:R700
+Superior crossbow, +22% total damage (L4)     | lxb | 3 | 0 | 4 | totalcrossbowdamage=22 | hidden
+Superior crossbow, reload limit 5%            | lxb | 3 | 0 | 4 | crossbowreloadspeedlimit=5 | shown match:R702
+Superior crossbow, reload limit 4% (L3)       | lxb | 3 | 0 | 3 | crossbowreloadspeedlimit=4 | shown match:R703 nomatch:R702
+Superior crossbow, no special roll (L4)       | lxb | 3 | 0 | 4 | - | hidden
+# Superior helms
+Superior cap, +1 maximum curses               | cap | 3 | 0 | 4 | extra_curse=1 | shown match:R704
+Superior cap, no special roll (L4)            | cap | 3 | 0 | 4 | - | hidden nomatch:R704
+# Rare rings and amulets
+Rare Mythical Ring                            | mrn | 6 | -1 | 4 | - | shown match:R271
+Rare Mythical Amulet                          | mam | 6 | -1 | 4 | - | shown match:R271
+Rare ring                                     | rin | 6 | -1 | 4 | - | shown match:R271
+Rare amulet                                   | amu | 6 | -1 | 4 | - | shown match:R271
+Rare class ring (keeps its own rule)          | zrn | 6 | -1 | 4 | - | shown match:R269 nomatch:R271
+Unique Mythical Ring                          | mrn | 7 | -1 | 4 | - | shown match:R164
+Unique Mythical Amulet                        | mam | 7 | -1 | 4 | - | shown match:R199
+# Mythical lists hold all 61 bases (m40-m61 and dd1 were missing from R115, R116, R163)
+Normal Mythical base m45 (L4)                 | m45 | 2 | 2 | 4 | - | hidden match:R116
+Magic Mythical base m50 (L4)                  | m50 | 4 | 2 | 4 | - | hidden match:R115
+Superior Mythical base m45                    | m45 | 3 | 2 | 3 | - | match:R163
+Normal Mythical Death Blade dd1 (L4)          | dd1 | 2 | 2 | 4 | - | hidden match:R116
+Normal Mythical base m45 (L2, not hidden)     | m45 | 2 | 2 | 2 | - | shown
+# 7wd is an ordinary elite sword, not a Mythical
+Normal 7wd elite sword (L3)                   | 7wd | 2 | 2 | 3 | - | hidden nomatch:R116
+Normal 7wd elite sword, clvl 90 (L1)          | 7wd | 2 | 2 | 1 | - | hidden match:R096
