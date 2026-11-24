@@ -105,3 +105,11 @@ That loot filter DLL must be the build with the editor bridge.
 
 - The plugin asks for the bridge the first time you press the key, not when the game starts.
   This is because plugins load in no fixed order.
+
+## Finding a game button's message (lfeditor-uilog)
+
+Type `lfeditor-uilog` in the console to turn the UI message log on, click a
+button (for example the pause menu's Loot Filter button), then run the command
+again to turn it off. The plugin log then has lines like
+`Loot Filter Editor: UI message PanelManager:OpenPanel:...`. Nothing is
+changed or blocked; the log only records what the game sends.

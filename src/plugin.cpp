@@ -9,6 +9,7 @@
 
 #include <D2RLPlugin/api.h>
 #include <D2RLPlugin/plugin_communication.h>
+#include <D2RLPlugin/shared_events.h>
 
 #include <editor_bridge_api.h>
 
@@ -367,6 +368,48 @@ auto __cdecl EditorCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext
 }
 
 // ---------------------------------------------------------------------------
+//  UI message log (lfeditor-uilog): finds the message a game button sends
+// ---------------------------------------------------------------------------
+// Off until the command turns it on. Every UI message the game sends is
+// written to the log as target:command:text and always passed on unchanged.
+const D2RL::SharedEventService* EventsSvc{};
+D2RL::SharedEvents::ListenerHandle UiListener{};
+bool                               UiLogOn{};
+
+auto __cdecl OnUiMessage(const D2RL::PluginContext*, const D2RL::SharedEvents::UiMessageEvent* event, void*) noexcept
+    -> D2RL::SharedEvents::UiMessageAction {
+    if (UiLogOn && event != nullptr) {
+        try {
+            LogInfo(std::string("Loot Filter Editor: UI message ") + (event->target != nullptr ? event->target : "")
+                + ":" + (event->command != nullptr ? event->command : "") + ":" + (event->text != nullptr ? event->text : ""));
+        } catch (...) {
+        }
+    }
+    return D2RL::SharedEvents::UiMessageAction::Continue;
+}
+
+void RegisterUiLog() {
+    if (Context->QueryService(&EventsSvc) != D2RL::ServiceQueryResult::Success
+        || !D2RL::HasSharedEventServiceField(EventsSvc, D2RL::SharedEventServiceRequiredSize)) {
+        EventsSvc = nullptr;
+        LogWarn("Loot Filter Editor: no shared event service; lfeditor-uilog is unavailable.");
+        return;
+    }
+    const D2RL::SharedEvents::UiMessageListener listener{ D2RL::SharedEvents::UiMessageListenerSize, 0, 0, 0, &OnUiMessage, nullptr };
+    if (EventsSvc->registerUiMessageListener(Context, &listener, &UiListener) != D2RL::SharedEvents::Result::Success) {
+        LogWarn("Loot Filter Editor: the UI message listener was refused; lfeditor-uilog is unavailable.");
+    }
+}
+
+auto __cdecl UiLogCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+    if (command == nullptr) return D2RL::ConsoleCommandResult::Failed;
+    UiLogOn = !UiLogOn;
+    Console(UiLogOn ? "lfeditor-uilog: on. Every UI message goes to the plugin log until you run it again."
+                    : "lfeditor-uilog: off.");
+    return D2RL::ConsoleCommandResult::Handled;
+}
+
+// ---------------------------------------------------------------------------
 //  Loading
 // ---------------------------------------------------------------------------
 auto QueryServices() -> bool {
@@ -431,6 +474,10 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
         if (!Context->RegisterConsoleCommand("lfeditor", &EditorCommand, "Loot filter editor: bridge and filter state.")) {
             LogWarn("Loot Filter Editor: the console command could not be registered.");
         }
+        if (!Context->RegisterConsoleCommand("lfeditor-uilog", &UiLogCommand, "Loot filter editor: log every UI message (on/off).")) {
+            LogWarn("Loot Filter Editor: the lfeditor-uilog command could not be registered.");
+        }
+        RegisterUiLog();
         // Without both services we stay inert but let the game run.
         if (!QueryServices()) return true;
         if (!RegisterAction("loot-filter-editor-edit-item", "Edit Hovered Item (Filter Editor)", &OnEditItem)) {
@@ -445,6 +492,10 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 }
 
 D2RL_PLUGIN_EXPORT void D2RLoaderUnloadPlugin() noexcept {
+    if (EventsSvc != nullptr && UiListener != D2RL::SharedEvents::ListenerHandle{}) {
+        (void)EventsSvc->unregisterUiMessageListener(Context, UiListener);
+    }
+    EventsSvc = nullptr;
     // Give the bridge back so the loot filter can unload.
     (void)Lease.Reset();
     InputSvc = nullptr;
