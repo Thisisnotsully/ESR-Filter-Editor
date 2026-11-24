@@ -10,9 +10,16 @@
   ordinary elite sword despite its name.
 - Every item code in the filter exists in the mod.
 - Every translated text has all 13 languages.
-Prints the next unused R### id. Exits 1 when something is wrong.
+- A deleted rule's id (RETIRED) is never used again: players' saved changes are
+  kept by id, so a new rule with an old id would take over changes meant for the old one.
+Prints the next unused R### id (past every retired one). Exits 1 when something is wrong.
 """
 import csv, json, re, sys
+
+# Ids of rules deleted from a released version, and the version that deleted them. Add each deleted rule here.
+RETIRED = {
+    115: "0.9.5 (magic Mythical bases are never hidden)",
+}
 
 LANGS = ["enUS", "deDE", "esES", "frFR", "itIT", "koKR", "plPL", "ruRU", "zhCN", "zhTW", "esMX", "jaJP", "ptBR"]
 
@@ -56,6 +63,8 @@ def main():
             problems.append(f"rule {n}: title is not 'R### | what | action': {title[:80]!r}")
             continue
         rid = m.group(1)
+        if int(rid[1:]) in RETIRED:
+            problems.append(f"{rid}: this id belonged to a rule deleted in {RETIRED[int(rid[1:])]}; use the next unused id")
         if rid in ids:
             problems.append(f"{rid}: used by rules {ids[rid]} and {n}")
         ids.setdefault(rid, n)
@@ -90,7 +99,7 @@ def main():
 
     for p in problems:
         print("PROBLEM:", p)
-    numbers = sorted(int(r[1:]) for r in ids)
+    numbers = sorted(set(int(r[1:]) for r in ids) | set(RETIRED))
     print(f"lint: {len(filt['rules'])} rules, {len(problems)} problems; Mythical bases in the mod: {len(myth_all)} "
           f"({len(myth_weapons)} weapons, {len(myth_armor)} armor); next unused id: R{numbers[-1] + 1:03d}")
     return 1 if problems else 0

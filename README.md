@@ -77,7 +77,7 @@ That loot filter DLL must be the build with the editor bridge.
 - [ ] Mouse hover: point at a ground item, press the key. Three lines appear in chat.
 - [ ] Controller target: target an item with the controller, press the key. Same three lines.
 - [ ] Show Hidden Items off: items the filter hides cannot be pointed at, so nothing happens.
-- [ ] Show Hidden Items on: turn it on with the loot filter key. Point at a hidden item. Line 2 says "Hidden by R..." (or "Hidden: no rule matched...").
+- [ ] Show Hidden Items on: turn it on with the loot filter key. Point at a hidden item. Line 2 says "Hidden by R123 | ..." with the rule's own id from its title (a rule without an id in its title shows as "rule #N", its place in the file), or "Hidden: no rule matched...".
 - [ ] Item labels up: hold Alt (or turn on the game's "always show items") and point at an item's name label, not the item itself. Note whether the key still works. The loot filter's hover hook may only see the item, not its label; this test tells us.
 - [ ] Two items lying on top of each other: point at one, press the key, and check the chat names the item you meant.
 - [ ] Stats, identified Magic or Superior item: a fourth chat line says "Stats: N (listed in the log)". In the log, the line "hovered item stats" lists each stat as stat,param=value. Check that a few values match the item's tooltip (for example its Faster Cast Rate or Life).
@@ -95,7 +95,7 @@ That loot filter DLL must be the build with the editor bridge.
       { "comment": "Not in Chronicle", "chronicle": "missing", "show": true, "labelBorder": { "color": [255, 215, 0], "width": 2 }, "notify": true }
 
   A unique, set item or runeword you have not found gets a gold border and a chat line when it drops. One you have found does not.
-  The key lists the rule (R1 if it is first) for the first kind and not for the second.
+  The key lists the rule ("rule #1 Not in Chronicle" if it is first: that title has no id) for the first kind and not for the second.
   A later rule with its own labelBorder replaces the border.
 - [ ] Without the Chronicle Tracker: remove its DLL (or set `enabled = false` in its config) and start the game. No item says "in Chronicle" or "not in Chronicle", and the rule above never matches. Once an item has dropped, type `lootfilter` in the console: it says the chronicle service is not acquired, so chronicle conditions do not match. The plugin log has one warning about it, not one per item.
 

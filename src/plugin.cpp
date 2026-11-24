@@ -218,12 +218,23 @@ auto RuleTitle(int ruleNumber, bool* tooLong = nullptr) -> std::string {
     return buffer;
 }
 
-// "R<n>" or "R<n> <title>" with the title shortened for chat.
-auto RuleLabel(int ruleNumber, const std::string& title) -> std::string {
-    std::string label = "R" + Number(ruleNumber);
-    if (!title.empty()) label += " " + Shorten(title, MaxChatTitle);
-    return label;
+// A title that starts with the rule's own id ("R274 | ...", "U003 | ...") names the rule by itself.
+auto TitleHasId(const std::string& title) -> bool {
+    if (title.size() < 2 || (title[0] != 'R' && title[0] != 'U')) return false;
+    std::size_t i = 1;
+    while (i < title.size() && title[i] >= '0' && title[i] <= '9') ++i;
+    return i > 1 && (i == title.size() || title[i] == ' ' || title[i] == '|');
 }
+
+// A rule for people: its title when that starts with its id ("R274 | ..."), otherwise its place in the file
+// ("rule #306 <title>"). The bridge's rule numbers are places in the file, not the filter's own R### ids.
+auto RuleName(int ruleNumber, const std::string& title, std::size_t maxLength = std::string::npos) -> std::string {
+    const std::string text = maxLength == std::string::npos ? title : Shorten(title, maxLength);
+    if (TitleHasId(title)) return text;
+    return "rule #" + Number(ruleNumber) + (title.empty() ? "" : " " + text);
+}
+
+auto RuleLabel(int ruleNumber, const std::string& title) -> std::string { return RuleName(ruleNumber, title, MaxChatTitle); }
 
 // ---------------------------------------------------------------------------
 //  The key
@@ -241,8 +252,7 @@ void PrintItem(const Bridge::HoveredItem& item) {
         bool tooLong = false;
         const std::string title = RuleTitle(number, &tooLong);
         if (i > 0) fullRules += "; ";
-        fullRules += "R" + Number(number);
-        if (!title.empty()) fullRules += " " + title;
+        fullRules += RuleName(number, title);
         if (tooLong) fullRules += " (title over 512 bytes, not read)";
         if (i < MaxRulesInChat) {
             if (i > 0) chatRules += "; ";
@@ -286,8 +296,8 @@ void PrintItem(const Bridge::HoveredItem& item) {
     std::string hiddenText;  // for the log
     if (item.hiddenBy > 0) {
         const std::string title = RuleTitle(item.hiddenBy);
-        line2 = Yc + "1Hidden by R" + Number(item.hiddenBy) + (title.empty() ? "" : ": " + Shorten(title, MaxChatTitle));
-        hiddenText = "hidden by R" + Number(item.hiddenBy) + (title.empty() ? "" : ": " + title);
+        line2 = Yc + "1Hidden by " + RuleName(item.hiddenBy, title, MaxChatTitle);
+        hiddenText = "hidden by " + RuleName(item.hiddenBy, title);
     } else if (item.hiddenBy == -1) {
         line2 = Yc + "1Hidden: no rule matched and the filter hides unmatched items";
         hiddenText = "hidden: no rule matched and the filter hides unmatched items";
