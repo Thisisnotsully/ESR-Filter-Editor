@@ -57,3 +57,11 @@ Magic Mythical armor m20 Diadem (L4)          | m20 | 4 | 2 | 4 | - | shown
 Magic Mythical weapon m01, clvl 90 (L3)       | m01 | 4 | 2 | 3 | - | shown
 Magic Mythical armor m06, clvl 90 (L1)        | m06 | 4 | 2 | 1 | - | shown
 Magic 7wd elite sword (L4, not a Mythical)    | 7wd | 4 | 2 | 4 | - | hidden
+
+# ---- 0.9.6
+# Items not in the Chronicle are never hidden (R730; needs the Chronicle Tracker)
+Unique not in Chronicle, normal tier (L4)     | cap | 7 | 0 | 4 | chronicle=missing | shown match:R730
+Set item not in Chronicle (L4)                | lrg | 5 | 0 | 4 | chronicle=missing | shown match:R730
+Elite unique not in Chronicle (L4)            | uap | 7 | 2 | 4 | chronicle=missing | shown match:R730
+Unique already in Chronicle (L4)              | cap | 7 | 0 | 4 | chronicle=completed | hidden nomatch:R730
+Unique, no Chronicle Tracker (L4)             | cap | 7 | 0 | 4 | - | hidden nomatch:R730

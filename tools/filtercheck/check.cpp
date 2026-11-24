@@ -160,7 +160,9 @@ struct Item final : ItemSubject {
     int quality{ 2 }, tier{ -1 }, ilvl{ 85 };
     bool identified{ true };
     int uniqueId{ -1 };
+    ChronicleStatus chronicle{ ChronicleStatus::Unknown };
     std::map<int, int> stats;
+    auto Chronicle() const -> ChronicleStatus override { return chronicle; }
     auto Code() const -> std::uint32_t override { return PackItemCode(code); }
     auto Quality() const -> int override { return quality; }
     auto BaseTier() const -> int override { return tier; }
@@ -250,6 +252,10 @@ auto main(int argc, char** argv) -> int {
                     const std::string key = Trim(p[0]);
                     if (key == "unid") { item.identified = false; continue; }
                     if (key == "uid") { item.uniqueId = std::atoi(p[1].c_str()); continue; }
+                    if (key == "chronicle") {  // missing, completed (otherwise unknown: no Chronicle Tracker)
+                        item.chronicle = p[1] == "missing" ? ChronicleStatus::Missing : p[1] == "completed" ? ChronicleStatus::Completed : ChronicleStatus::Unknown;
+                        continue;
+                    }
                     item.stats[D.statId.count(key) ? D.statId[key] : std::atoi(key.c_str())] = std::atoi(p[1].c_str());
                 }
             }
