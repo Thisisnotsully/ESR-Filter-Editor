@@ -80,6 +80,9 @@ That loot filter DLL must be the build with the editor bridge.
 - [ ] Show Hidden Items on: turn it on with the loot filter key. Point at a hidden item. Line 2 says "Hidden by R..." (or "Hidden: no rule matched...").
 - [ ] Item labels up: hold Alt (or turn on the game's "always show items") and point at an item's name label, not the item itself. Note whether the key still works. The loot filter's hover hook may only see the item, not its label; this test tells us.
 - [ ] Two items lying on top of each other: point at one, press the key, and check the chat names the item you meant.
+- [ ] Stats, identified Magic or Superior item: a fourth chat line says "Stats: N (listed in the log)". In the log, the line "hovered item stats" lists each stat as stat,param=value. Check that a few values match the item's tooltip (for example its Faster Cast Rate or Life).
+- [ ] Stats, unidentified item: the first line ends with "unidentified" and the stats line says "none, unidentified".
+- [ ] The specialization that shows Magic items as identified: with it, does a Magic item on the ground say "unidentified" or not, and does it list stats? Note which.
 - [ ] Nothing hovered: press the key with nothing under the cursor. Nothing happens, no message.
 - [ ] Loot filter without the bridge: press the key. One console line says the bridge is not available. It is not repeated for the same problem.
 - [ ] Console command: open the console and type `lfeditor`. It says whether the bridge is acquired, its version, and the filter state (loaded, title, id, level, Show Hidden, hover, rule count, errors, warnings).

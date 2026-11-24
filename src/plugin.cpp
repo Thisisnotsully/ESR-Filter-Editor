@@ -13,6 +13,7 @@
 #include <editor_bridge_api.h>
 
 #include <algorithm>
+#include <vector>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -223,6 +224,27 @@ void PrintItem(const Bridge::HoveredItem& item) {
     if (item.ethereal != 0) line1 += Dot + "ethereal";
     if (item.chronicle == 1) line1 += Dot + "not in Chronicle";
     else if (item.chronicle == 2) line1 += Dot + "in Chronicle";
+    if (item.identified == 0) line1 += Dot + "unidentified";
+
+    // The item's stats: a count in chat, every entry in the log.
+    std::vector<Bridge::ItemStat> stats(128);
+    uint32_t statCount = 0;
+    Bridge::Result statsResult = Bridge::Result::Failed;
+    if (Lease && Lease->getItemStats != nullptr) {
+        statsResult = Lease->getItemStats(item.unitId, stats.data(), static_cast<uint32_t>(stats.size()), &statCount);
+        if (statsResult == Bridge::Result::BufferTooSmall) {
+            stats.resize(statCount);
+            statsResult = Lease->getItemStats(item.unitId, stats.data(), static_cast<uint32_t>(stats.size()), &statCount);
+        }
+    }
+    if (statsResult != Bridge::Result::Success) statCount = 0;
+    stats.resize(std::min<std::size_t>(statCount, stats.size()));
+    std::string statText;
+    for (const Bridge::ItemStat& stat : stats) {
+        if (!statText.empty()) statText += "; ";
+        statText += Number(static_cast<uint32_t>(stat.stat)) + "," + Number(stat.param) + "=" + std::to_string(stat.value)
+            + " (stored " + std::to_string(stat.stored) + ")";
+    }
 
     // Line 2: shown or hidden.
     std::string line2;
@@ -252,6 +274,9 @@ void PrintItem(const Bridge::HoveredItem& item) {
         (void)Lease->printChat(line1.c_str());
         (void)Lease->printChat(line2.c_str());
         (void)Lease->printChat(line3.c_str());
+        const std::string line4 = Yc + "0Stats: " + (statsResult != Bridge::Result::Success ? std::string("not read (") + ResultName(statsResult) + ")"
+            : item.identified == 0 ? std::string("none, unidentified") : Number(statCount) + " (listed in the log)");
+        (void)Lease->printChat(line4.c_str());
     }
 
     // One full line in the log, nothing cut.
@@ -264,6 +289,8 @@ void PrintItem(const Bridge::HoveredItem& item) {
         + " revision=" + std::to_string(item.filterRevision) + " rules=[" + fullRules + "]";
     if (item.matchedCount > listed) log += " (list holds " + Number(listed) + " of " + Number(item.matchedCount) + ")";
     LogInfo(log);
+    LogInfo("Loot Filter Editor: hovered item stats (stat,param=tooltip value): " + std::string(ResultName(statsResult)) + " count="
+        + Number(statCount) + " [" + statText + "]");
 }
 
 auto __cdecl OnEditItem(const D2RL::PluginContext*, const D2RL::Input::ActionEvent* event, void*) noexcept -> D2RL::Input::ActionResult {
