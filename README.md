@@ -33,15 +33,15 @@ It hooks nothing.
 - D2RLoader with the plugin SDK this repo uses.
 - The loot filter plugin, built with the editor bridge.
   A loot filter without the bridge will not work with this plugin.
-- Visual Studio 2022 (the "Desktop development with C++" part) and CMake 3.29 or newer.
+- Visual Studio 2026 (the "Desktop development with C++" part) and CMake 3.29 or newer.
 - The folder `d2rloader_plugins` next to this folder.
   If it is somewhere else, see the options below.
 
 ## Build (Windows)
 
-Open the "x64 Native Tools Command Prompt for VS 2022" and go to this folder.
+Open the "x64 Native Tools Command Prompt for VS 2026" and go to this folder.
 
-    cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+    cmake -S . -B build -G "Visual Studio 18 2026" -A x64
     cmake --build build --config Release
 
 Or with Ninja:
