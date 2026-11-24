@@ -41,6 +41,10 @@ struct DescribeContext {
 
 auto Describe(const document::Value& rule, const DescribeContext& context) -> RuleSummary;
 
+// The name of one entry of a rule's item list: itemCodes (a base), itemTypes (a type), uniqueOrSetIds (a unique or set
+// item; `setItems` when the rule is about set items).
+auto EntryName(std::string_view key, const document::Value& entry, const DescribeContext& context, bool setItems = false) -> std::string;
+
 // A filter text in the language: a string, or an object of language -> string (enUS, then the first one).
 auto PickLanguage(const document::Value& text, gamedata::Language language) -> std::string;
 

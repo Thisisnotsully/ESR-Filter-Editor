@@ -156,6 +156,8 @@ public:
     // Sets a top-level member. A new one goes before beforeKey when present,
     // else before "styles", else before "rules", else at the end.
     auto SetSetting(std::string_view key, const Value& value, std::string_view beforeKey = {}) -> Status;
+    // Removes a top-level member (every copy of the key); fine when there is none.
+    auto RemoveSetting(std::string_view key) -> Status;
 
 private:
     // Where a rule's or heading's text is.

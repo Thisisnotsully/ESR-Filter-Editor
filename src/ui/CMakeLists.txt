@@ -4,7 +4,7 @@ add_library(ui STATIC
     rule_text.cpp
     rule_view.cpp)
 target_include_directories(ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(ui PUBLIC overlay_core document gamedata)
+target_link_libraries(ui PUBLIC overlay_core document gamedata edit)
 target_compile_features(ui PUBLIC cxx_std_20)
 if(MSVC)
     target_compile_options(ui PRIVATE /W4 /permissive- /utf-8 /EHsc)

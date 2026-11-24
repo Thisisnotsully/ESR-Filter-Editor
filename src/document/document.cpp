@@ -1175,4 +1175,13 @@ auto Document::SetSetting(std::string_view key, const Value& value, std::string_
     return SetMember(root, key, value, before);
 }
 
+auto Document::RemoveSetting(std::string_view key) -> Status {
+    if (Nd(syntax_.root).type != Type::Object) return {"the filter is not an object"};
+    while (FindMember(syntax_, text_, syntax_.root, key) >= 0) {
+        Status status = RemoveMember(syntax_.root, key);
+        if (!status) return status;
+    }
+    return {};
+}
+
 }  // namespace document

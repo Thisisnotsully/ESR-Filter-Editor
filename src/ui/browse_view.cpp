@@ -1,6 +1,7 @@
 #include "browse_view.hpp"
 
 #include <algorithm>
+#include <set>
 
 #include "rule_view.hpp"
 #include "text_fold.hpp"
@@ -44,6 +45,40 @@ auto Loaded::Place(int rule) const -> std::string {
     return out;
 }
 
+auto Loaded::Author() const -> std::string {
+    const std::string& author = doc.GetSettings().author;
+    return author.empty() ? UiText("the author") : author;
+}
+
+auto Loaded::Build(std::string text) -> bool {
+    diags.clear();
+    parsed = document::Document::Parse(std::move(text), doc, diags);
+    stale = false;
+    rules.clear();
+    search.clear();
+    off.clear();
+    changed.clear();
+    if (!parsed) return false;
+    const auto& list = doc.Rules();
+    rules.reserve(list.size());
+    for (const document::Rule& rule : list) {
+        RuleSummary summary = Describe(rule.value, context);
+        // Only what the player sees in the list and on the card: a rule found for a word they cannot see looks wrong.
+        std::string words = summary.actionLabel + "\n" + rule.id + "\n";
+        for (const std::string& n : summary.whatAll) words += n + "\n";
+        for (const std::string& c : summary.conditions) words += c + "\n";
+        for (const std::string& e : summary.effects) words += e + "\n";
+        if (summary.whatAll.empty()) words += summary.what + "\n";
+        search.push_back(overlay::text::SearchTextUtf8(overlay::StripColorCodes(words)));
+        rules.push_back(std::move(summary));
+        const bool isOff = session != nullptr && session->IsOff(rule.id);
+        const bool isChanged = session != nullptr && (session->Change(rule.id) != nullptr || rule.id.rfind('U', 0) == 0);
+        off.push_back(isOff ? 1 : 0);
+        changed.push_back(isChanged ? 1 : 0);
+    }
+    return true;
+}
+
 namespace {
 
 // Reads and describes the filter. Runs on the overlay's UI thread (729 rules: a few milliseconds).
@@ -52,40 +87,33 @@ auto Load(Source& source, const FilterInfo& info, std::shared_ptr<const gamedata
     loaded->info = info;
     loaded->game = std::move(game);
     loaded->language = source.Language();
-    std::string text;
-    if (!source.ReadFile(info.path, text)) {
-        loaded->error = UiFormat("The file could not be opened: {0}", {info.path});
-        return loaded;
-    }
-    loaded->parsed = document::Document::Parse(std::move(text), loaded->doc, loaded->diags);
-    if (!loaded->parsed) {
-        loaded->error = loaded->diags.empty() ? UiText("The file is not a filter the loot filter can read.")
-                                              : UiFormat("The file could not be read: {0}", {loaded->diags.front().message});
-        return loaded;
-    }
-    DescribeContext context;
-    context.game = loaded->game.get();
-    context.language = loaded->language;
+    loaded->context.game = loaded->game.get();
+    loaded->context.language = loaded->language;
     const Loaded* raw = loaded.get();
-    context.style = [raw](std::string_view name) -> const document::Value* {
+    loaded->context.style = [raw](std::string_view name) -> const document::Value* {
         for (const document::Style& s : raw->doc.Styles())
             if (s.name == name) return &s.value;
         return nullptr;
     };
-    context.levelName = [raw](std::int64_t id) { return raw->LevelName(id); };
-    const auto& rules = loaded->doc.Rules();
-    loaded->rules.reserve(rules.size());
-    loaded->search.reserve(rules.size());
-    for (const document::Rule& rule : rules) {
-        RuleSummary summary = Describe(rule.value, context);
-        // Only what the player sees in the list and on the card: a rule found for a word they cannot see looks wrong.
-        std::string words = summary.actionLabel + "\n" + rule.id + "\n";
-        for (const std::string& n : summary.whatAll) words += n + "\n";
-        for (const std::string& c : summary.conditions) words += c + "\n";
-        for (const std::string& e : summary.effects) words += e + "\n";
-        if (summary.whatAll.empty()) words += summary.what + "\n";
-        loaded->search.push_back(overlay::text::SearchTextUtf8(overlay::StripColorCodes(words)));
-        loaded->rules.push_back(std::move(summary));
+    loaded->context.levelName = [raw](std::int64_t id) { return raw->LevelName(id); };
+
+    // Through a session (the player's copy and changes); read only when that cannot be.
+    std::string text;
+    auto session = std::make_shared<edit::Session>();
+    std::string why;
+    if (session->Open(info.filterId, info.path, source.Folders(), why)) {
+        loaded->session = session;
+        text = session->ViewText();
+    } else {
+        loaded->sessionError = why;
+        if (!source.ReadFile(info.path, text)) {
+            loaded->error = UiFormat("The file could not be opened: {0}", {info.path});
+            return loaded;
+        }
+    }
+    if (!loaded->Build(std::move(text))) {
+        loaded->error = loaded->diags.empty() ? UiText("The file is not a filter the loot filter can read.")
+                                              : UiFormat("The file could not be read: {0}", {loaded->diags.front().message});
     }
     return loaded;
 }
@@ -181,19 +209,23 @@ void BrowseView::Refresh(Ui& ui, bool force) {
     const bool queued = ui.RunOnGame([source, answer] { *answer = source->Filter(); },
                                      [this, alive, answer, force](Ui& back) {
                                          if (!*alive) return;
-                                         Apply(*answer, force);
+                                         Apply(*answer, back, force);
                                          back.Repaint();
                                      });
     if (!queued) {
         FilterInfo none;
-        Apply(none, true);
+        Apply(none, ui, true);
         message_.text = UiText("The game did not answer. Close the editor and open it again.");
         ui.Repaint();
     }
 }
 
-void BrowseView::Apply(const FilterInfo& info, bool force) {
+void BrowseView::Apply(const FilterInfo& info, Ui& ui, bool force) {
     std::shared_ptr<const gamedata::GameData> game = source_->Game();
+    if (loaded_ && loaded_->stale && loaded_->session != nullptr) {  // edited on a rule card: the list again
+        loaded_->Build(loaded_->session->ViewText());
+        Rebuild();
+    }
     const bool sameFile = loaded_ && loaded_->info.path == info.path && loaded_->info.textHash == info.textHash &&
                           info.textHash != 0 && loaded_->info.loaded == info.loaded;
     const bool gameArrived = gameWasMissing_ && game != nullptr;
@@ -235,6 +267,7 @@ void BrowseView::Apply(const FilterInfo& info, bool force) {
     }
     empty_ = false;
     Rebuild();
+    if (loaded_->session != nullptr && !loaded_->session->Conflicts().empty()) AskConflicts(ui);
 }
 
 void BrowseView::Rebuild() {
@@ -409,6 +442,75 @@ void BrowseView::Refilter() {
     }
 }
 
+namespace {
+
+// A field the player changed, in words, with a value as the player would read it.
+auto FieldWords(const std::string& key) -> std::string {
+    if (key == "activeInLevels") return UiText("its filter levels");
+    if (key == "hide" || key == "show") return UiText("what it does (hide or always show)");
+    if (key == "itemCodes" || key == "itemTypes" || key == "uniqueOrSetIds") return UiText("its items");
+    return UiFormat("its setting {0}", {key});
+}
+
+auto ValueWords(const Loaded& loaded, const std::string& key, const document::Value& value, bool absent) -> std::string {
+    if (absent) return key == "activeInLevels" ? UiText("every level") : UiText("not set");
+    if (key == "activeInLevels" && value.IsArray()) {
+        std::vector<std::string> names;
+        for (const document::Value& v : value.array) {
+            std::int64_t id = 0;
+            v.AsInteger(id);
+            const std::string name = loaded.LevelName(id);
+            names.push_back(name.empty() ? std::to_string(id) : name);
+        }
+        return JoinNames(names, names.size());
+    }
+    if (value.IsBool()) return value.boolean ? UiText("yes") : UiText("no");
+    return document::Render(value);
+}
+
+}  // namespace
+
+void BrowseView::AskConflicts(Ui& ui) {
+    if (!loaded_ || loaded_->session == nullptr) return;
+    std::shared_ptr<Loaded> loaded = loaded_;
+    std::shared_ptr<bool> alive = alive_;
+    const auto& conflicts = loaded->session->Conflicts();
+    if (conflicts.empty()) {  // every one answered: the update is in
+        loaded->session->FinishConflicts();
+        std::string error;
+        bool switched = false;
+        if (!loaded->session->Save(error, switched)) message_.text = error;
+        loaded->stale = true;
+        Refresh(ui, true);
+        return;
+    }
+    const edit::Conflict conflict = conflicts.front();
+    const int index = loaded->doc.FindRule(conflict.id);
+    const std::string about = index >= 0 ? overlay::StripColorCodes(loaded->rules[static_cast<std::size_t>(index)].what) : conflict.id;
+    overlay::DialogSpec spec;
+    spec.title = UiFormat("{0} updated the filter", {loaded->Author()});
+    if (conflict.kind == edit::Conflict::Kind::Deleted) {
+        spec.message = UiFormat("Rule {0} ({1}) is gone from {2}'s new version. You had changed it.", {conflict.id, about, loaded->Author()});
+        spec.confirm = "Drop my change";
+        spec.cancel = "Keep it as my rule";
+    } else {
+        spec.message = UiFormat("Rule {0} ({1}): you changed {2} to: {3}.\n{4}'s new version has: {5}.",
+                                {conflict.id, about, FieldWords(conflict.key), ValueWords(*loaded, conflict.key, conflict.mine, conflict.mineRemoved),
+                                 loaded->Author(), ValueWords(*loaded, conflict.key, conflict.now, conflict.nowAbsent)});
+        spec.confirm = UiFormat("Use {0}'s", {loaded->Author()});
+        spec.cancel = "Keep mine";
+    }
+    // Escape / B is the cancel button: keeping the player's version is the safe answer.
+    spec.confirmIsDefault = false;
+    ui.ShowDialog(spec, [this, alive, loaded, conflict, &ui](bool takeAuthors) {
+        if (!*alive) return;
+        loaded->session->Resolve(conflict, !takeAuthors);
+        ui.PostToUi([this, alive](Ui& next) {
+            if (*alive) AskConflicts(next);
+        });
+    });
+}
+
 void BrowseView::OpenRule(int shownIndex, Ui& ui) {
     if (!loaded_ || shownIndex < 0 || shownIndex >= static_cast<int>(shown_.size())) return;
     ui.PushView(std::make_shared<RuleView>(loaded_, shown_[static_cast<std::size_t>(shownIndex)]));
@@ -449,7 +551,9 @@ void BrowseView::Layout(const LayoutContext& c) {
         std::string text = UiFormat("{0} rules", {std::to_string(loaded_->doc.ActiveCount())});
         if (!s.version.empty()) text += "  ·  " + UiFormat("version {0}", {s.version});
         if (!s.author.empty()) text += "  ·  " + UiFormat("by {0}", {s.author});
-        if (loaded_->info.shipped) text += "  ·  " + UiText("ships with the mod");
+        if (loaded_->session != nullptr && loaded_->session->IsCopy()) text += "  ·  " + UiText("your version: your changes on top of the author's filter");
+        else if (loaded_->info.shipped) text += "  ·  " + UiText("ships with the mod");
+        if (loaded_->session == nullptr && !loaded_->sessionError.empty()) text += "  ·  " + UiFormat("read only: {0}", {loaded_->sessionError});
         info_.text = text;
     } else {
         info_.text.clear();
@@ -527,7 +631,9 @@ void BrowseView::PaintRuleRow(Canvas& canvas, int index, const Box& row, const o
     const RuleSummary& s = loaded_->rules[static_cast<std::size_t>(r)];
     const document::Rule& rule = loaded_->doc.Rules()[static_cast<std::size_t>(r)];
     const overlay::Theme& theme = canvas.GetTheme();
-    const bool active = ActiveOnLevel(r);
+    const bool isOff = loaded_->off[static_cast<std::size_t>(r)] != 0;
+    const bool isChanged = loaded_->changed[static_cast<std::size_t>(r)] != 0;
+    const bool active = ActiveOnLevel(r) && !isOff;
 
     // The action badge.
     const int pad = canvas.S(10);
@@ -537,10 +643,12 @@ void BrowseView::PaintRuleRow(Canvas& canvas, int index, const Box& row, const o
     const Rgb color = active ? ActionColor(s.action, theme) : theme.dim;
     canvas.FillAlpha(badge, color, active ? 64 : 32);
     canvas.Frame(badge, color);
-    canvas.Text(s.actionLabel, badge, active ? theme.text : theme.dim, Font::Small, kCenter | kVCenter | kSingleLine | kNoHighlight);
+    canvas.Text(isOff ? UiText("Off") : s.actionLabel, badge, active ? theme.text : theme.dim, Font::Small, kCenter | kVCenter | kSingleLine | kNoHighlight);
 
     // The id at the right, the items and the conditions.
-    const int idWidth = canvas.TextWidth(rule.id, Font::Small) + pad;
+    const std::string mark = isChanged ? (rule.id.rfind('U', 0) == 0 ? UiText("yours") : UiText("changed")) : std::string{};
+    const int markWidth = mark.empty() ? 0 : canvas.TextWidth(mark, Font::Small) + pad;
+    const int idWidth = canvas.TextWidth(rule.id, Font::Small) + pad + markWidth;
     const int left = badge.right + pad;
     const int split = row.top + canvas.S(5) + canvas.LineHeight(Font::Bold);
     canvas.SetHighlight(&highlight_);
@@ -549,7 +657,8 @@ void BrowseView::PaintRuleRow(Canvas& canvas, int index, const Box& row, const o
     canvas.Text(WhatShown(index), what, active ? theme.text : theme.dim, Font::Bold, kSingleLine);
     canvas.PopClip();
     std::string line;
-    if (!active) line = UiText("Not on this level") + "  ·  ";
+    if (isOff) line = UiText("Switched off") + "  ·  ";
+    else if (!active) line = UiText("Not on this level") + "  ·  ";
     for (const std::string& c : s.conditions) line += (line.empty() || line.ends_with("·  ") ? "" : "  ·  ") + c;
     if (s.conditions.empty() && !s.effects.empty()) {
         for (const std::string& e : s.effects) line += (line.empty() || line.ends_with("·  ") ? "" : "  ·  ") + overlay::StripColorCodes(e);
@@ -562,6 +671,9 @@ void BrowseView::PaintRuleRow(Canvas& canvas, int index, const Box& row, const o
     canvas.SetHighlight(nullptr);
     canvas.Text(rule.id, Box{row.right - idWidth - pad, row.top + canvas.S(4), row.right - pad, split}, theme.dim, Font::Small,
                 kRight | kSingleLine | kNoHighlight);
+    if (!mark.empty())
+        canvas.Text(mark, Box{row.right - idWidth - pad, row.top + canvas.S(4), row.right - pad - (idWidth - markWidth), split}, theme.gold,
+                    Font::Small, kRight | kSingleLine | kNoHighlight);
 }
 
 void BrowseView::HelpRows(const Widget* focused, std::vector<overlay::HelpRow>& out) const {

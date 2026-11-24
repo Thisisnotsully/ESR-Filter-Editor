@@ -26,21 +26,32 @@ using overlay::Widget;
 // The badge colour of an action.
 auto ActionColor(Action action, const overlay::Theme& theme) -> overlay::Rgb;
 
-// What the browse view and the rule cards share: the filter as read, and each rule in words.
+// What the browse view and the rule cards share: the filter as the player has it (the author's with the player's
+// changes, rules that are off still in it), each rule in words, and the session that edits it.
 struct Loaded {
     std::shared_ptr<const gamedata::GameData> game;
     gamedata::Language language = gamedata::Language::enUS;
     FilterInfo info;
+    std::shared_ptr<edit::Session> session;  // nullptr: read only (sessionError says why)
+    std::string sessionError;
     document::Document doc;
     std::vector<RuleSummary> rules;   // one per doc.Rules()
-    std::vector<std::string> search;  // the search form of each rule's words, title and id
+    std::vector<std::string> search;  // the search form of each rule's words
+    std::vector<char> off;            // per rule: switched off by the player
+    std::vector<char> changed;        // per rule: the player changed it (or it is the player's own)
     std::vector<document::Diag> diags;
     bool parsed = false;
+    bool stale = false;               // edited since the list was built: Build again before showing it
     std::string error;                // why the file could not be read
+    DescribeContext context;
 
     auto LevelName(std::int64_t id) const -> std::string;
     // Where a rule sits: "Protection > Mythicals" ("" when it is under no heading).
     auto Place(int rule) const -> std::string;
+    // The author's name for messages ("Sully"), else "the author".
+    auto Author() const -> std::string;
+    // Reads `text` (the session's view, or the file) and describes every rule. False when it is not a filter.
+    auto Build(std::string text) -> bool;
 };
 
 class BrowseView final : public overlay::View {
@@ -63,7 +74,7 @@ public:
     // or the file changed. Shown does it; the plugin does it when the mod's data has been read.
     void Refresh(Ui& ui, bool force = false);
     // The second half of Refresh, with the loot filter's answer.
-    void Apply(const FilterInfo& info, bool force = false);
+    void Apply(const FilterInfo& info, Ui& ui, bool force = false);
 
     // For tests.
     [[nodiscard]] auto Data() const -> const Loaded* { return loaded_.get(); }
@@ -98,6 +109,7 @@ private:
     void RebuildRows();      // rows_ from the parts that are open and the search
     void Refilter();         // shown_ from the section, the search and the level
     void OpenRule(int shownIndex, Ui& ui);
+    void AskConflicts(Ui& ui);  // an author's update clashes with the player's changes: one question each
     [[nodiscard]] auto ActiveOnLevel(int rule) const -> bool;
     [[nodiscard]] auto ChosenLevel() const -> std::int64_t;  // 0: every level
     void PaintRuleRow(Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState& state);

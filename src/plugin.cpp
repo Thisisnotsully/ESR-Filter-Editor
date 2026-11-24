@@ -14,6 +14,10 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <shlobj.h>
+#include <knownfolders.h>
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 
 #include <D2RLPlugin/api.h>
 #include <D2RLPlugin/threads.h>
@@ -30,6 +34,7 @@
 #include "browse_view.hpp"
 #include "demo_view.hpp"
 #include "source.h"
+#include "session.h"
 #include "game_thread.hpp"
 #include "input_block.hpp"
 #include "ui_text.hpp"
@@ -433,6 +438,50 @@ auto ModDataFolder() -> std::filesystem::path {
     return mod / (mod.filename().string() + ".mpq") / "data";
 }
 
+// ---- the loot filter's folders (for the player's copy of a filter and its changes) ----
+
+auto Utf8(const std::filesystem::path& path) -> std::string {
+    const std::u8string text = path.u8string();
+    return std::string(text.begin(), text.end());
+}
+
+// The loot filter's own default: Saved Games\Diablo II Resurrected\mods\<mod>\LootFilters. A player who set the loot
+// filter's user_folder gets the right folder once the editor has seen a filter from it (KnownUserFolder).
+auto DefaultUserFolder() -> std::string {
+    PWSTR saved = nullptr;
+    std::filesystem::path folder;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_SavedGames, 0, nullptr, &saved)) && saved != nullptr) {
+        const std::filesystem::path mod = PluginDir.parent_path().parent_path();
+        folder = std::filesystem::path(saved) / L"Diablo II Resurrected" / L"mods" / mod.filename() / L"LootFilters";
+    }
+    if (saved != nullptr) CoTaskMemFree(saved);
+    return folder.empty() ? std::string{} : Utf8(folder);
+}
+
+std::mutex  FolderLock;
+std::string KnownUserFolder;  // from the filter the loot filter has (repo: and user: filters sit in it)
+
+auto EditorFolders() -> esrfe::edit::Folders {
+    esrfe::edit::Folders folders;
+    {
+        std::lock_guard<std::mutex> lock(FolderLock);
+        folders.user = KnownUserFolder;
+    }
+    if (folders.user.empty()) folders.user = DefaultUserFolder();
+    folders.shipped = Utf8(PluginDir.parent_path().parent_path() / L"LootFilters");
+    return folders;
+}
+
+void LearnUserFolder(const std::string& filterId, const std::string& path) {
+    const std::filesystem::path file(std::u8string(path.begin(), path.end()));
+    std::filesystem::path folder;
+    if (filterId.rfind("repo:", 0) == 0) folder = file.parent_path().parent_path();
+    else if (filterId.rfind("user:", 0) == 0) folder = file.parent_path();
+    if (folder.empty()) return;
+    std::lock_guard<std::mutex> lock(FolderLock);
+    KnownUserFolder = Utf8(folder);
+}
+
 void __cdecl DoOpenNativeLootFilter(const D2RL::PluginContext*, void*) noexcept;
 
 // ---- what the editor's views ask of the plugin (src/ui/source.h) ----
@@ -451,6 +500,16 @@ auto EditorLanguage() -> gamedata::Language {
 }
 
 void LoadGameData() noexcept {
+    // The players' copies first: the launcher updated the authors' filters before the game started.
+    try {
+        for (const esrfe::edit::CopyUpdate& update : esrfe::edit::UpdateCopies(EditorFolders())) {
+            if (!update.error.empty()) LogWarn("Loot Filter Editor: " + update.copy + " could not be brought up to date: " + update.error);
+            else LogInfo("Loot Filter Editor: " + update.copy + " is up to date with its author's new version"
+                + (update.conflicts > 0 ? " (" + Number(static_cast<uint32_t>(update.conflicts)) + " changes to ask about when the editor opens)" : std::string{}) + ".");
+        }
+    } catch (...) {
+        LogWarn("Loot Filter Editor: bringing the players' copies up to date failed.");
+    }
     try {
         const std::filesystem::path data = ModDataFolder();
         auto game = std::make_shared<gamedata::GameData>();
@@ -497,7 +556,9 @@ public:
         info.bridge = true;
         info.loaded = state.loaded != 0;
         info.shipped = state.shipped != 0;
+        info.filterId = Text(state.filterId);
         info.path = Text(state.path);
+        LearnUserFolder(info.filterId, info.path);
         info.title = Text(state.title);
         info.failure = Text(state.failure);
         info.level = state.level;
@@ -515,6 +576,8 @@ public:
         out = text.str();
         return !file.bad();
     }
+
+    auto Folders() -> esrfe::edit::Folders override { return EditorFolders(); }
 
     void OpenGameSettings() override {
         if (Window) Window->Close();
@@ -803,7 +866,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.3.0",
+    .version     = "0.4.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,

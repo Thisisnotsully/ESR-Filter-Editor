@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "gamedata.h"
+#include "session.h"
 
 namespace esrfe::ui {
 
@@ -22,6 +23,7 @@ struct FilterInfo {
     bool bridge = false;   // the loot filter answered (false: the loot filter plugin is missing or too old)
     bool loaded = false;   // a filter is loaded
     bool shipped = false;  // the file ships with the mod
+    std::string filterId;  // "repo:QoL-Filter/Sullys-QoL-Filter.json", "user:x.json", "shipped:x.json"
     std::string path;      // UTF-8
     std::string title;
     std::string failure;   // why it did not load
@@ -39,6 +41,8 @@ public:
     virtual auto Language() -> gamedata::Language = 0;
     virtual auto Filter() -> FilterInfo = 0;
     virtual auto ReadFile(const std::string& path, std::string& out) -> bool = 0;
+    // The loot filter's filters folder and the mod's own (for the player's copy and its changes).
+    virtual auto Folders() -> edit::Folders = 0;
     // Closes the editor and opens the game's own loot filter screen.
     virtual void OpenGameSettings() = 0;
 };

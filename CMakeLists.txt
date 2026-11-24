@@ -37,6 +37,7 @@ add_subdirectory("${D2RL_SDK_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/d2rl-sdk")
 # overlay's window host is Windows only.
 add_subdirectory(src/document)
 add_subdirectory(src/gamedata)
+add_subdirectory(src/edit)
 add_subdirectory(src/overlay)
 add_subdirectory(src/ui)
 
@@ -46,7 +47,7 @@ add_library(${target} SHARED
     src/plugin.rc)
 
 target_include_directories(${target} PRIVATE "${LOOT_FILTER_SRC_DIR}")
-target_link_libraries(${target} PRIVATE D2RLPlugin::D2RLPlugin overlay ui document gamedata)
+target_link_libraries(${target} PRIVATE D2RLPlugin::D2RLPlugin overlay ui edit document gamedata)
 
 set_target_properties(${target} PROPERTIES
     PREFIX ""

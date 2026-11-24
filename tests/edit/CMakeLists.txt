@@ -1,0 +1,18 @@
+# Tests for src/edit against Sully's QoL Filter. Standalone:
+#   cmake -S tests/edit -B build-edit -DESR_FILTER=/path/to/Sullys-QoL-Filter.json && cmake --build build-edit && ctest --test-dir build-edit
+cmake_minimum_required(VERSION 3.20)
+project(edit_tests LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(ESR_FILTER "/home/claude/qol-filter/Sullys-QoL-Filter.json" CACHE FILEPATH "A filter to merge into")
+set(SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../src")
+foreach(part document edit)
+    if(NOT TARGET ${part})
+        add_subdirectory("${SRC}/${part}" "${CMAKE_CURRENT_BINARY_DIR}/${part}")
+    endif()
+endforeach()
+add_executable(edit_test edit_test.cpp)
+target_link_libraries(edit_test PRIVATE edit)
+target_compile_options(edit_test PRIVATE -Wall -Wextra)
+enable_testing()
+add_test(NAME edit COMMAND edit_test "${ESR_FILTER}")

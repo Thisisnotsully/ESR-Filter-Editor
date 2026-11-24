@@ -10,6 +10,7 @@ for Eastern Sun Resurrected. A D2RLoader plugin DLL
 |---|---|---|---|
 | `src/document/` | The filter file as a document: reads it with every comment, blank line and heading kept, exposes parts, sections and rules, applies edits, writes it back. An untouched file is written back byte for byte. | standard C++ only | on Linux, `tests/` |
 | `src/gamedata/` | The mod's tables and strings, read from the mod's data folder: item types, bases (and Mythicals), uniques, sets, affixes, superior bonuses, stats with their tooltip wording, in the player's language. | standard C++ only | on Linux, against the real mod files |
+| `src/edit/` | A player's changes to a filter they did not write (`changes`: per R### rule, only what they changed, with the author's value at the time), the merge into their own copy, conflicts with the author's updates, and the session that opens, edits and saves (`session`: the files, the sounds and icons, the switch in `selection.json`). | document, std::filesystem | on Linux, `tests/edit` (real filter, real folders) |
 | `src/overlay/` | The window: a Win32 overlay on its own UI thread, taken from the ESR Wiki overlay (window, DPI scaling, cursor, controller, on-screen keyboard, input block, UI strings). Knows nothing about filters: it hosts views. | Win32, GDI/GDI+, XInput, HID | in game |
 | `src/ui/` | The editor's views drawn with the overlay's toolkit, on top of document + gamedata: rules in plain words (`rule_text`), the browse view, the rule card; later the add-rule steps. What they need from the plugin is `source.h`. | the three above | on Linux, `tests/ui` (real filter and mod data), and in game |
 | `src/plugin.cpp` | D2RLoader entry: services, key bindings, console command, the bridge lease, opening the window. | the SDK | in game |
@@ -57,3 +58,18 @@ the loaded filter's state. It is the only link to the loot filter.
 See the project's `filter-maintenance.md`: permanent `R###` ids for the
 author's rules, `U###` for a player's own rules, players' changes kept
 separately and re-applied on updates.
+
+## The player's version of a filter
+
+The author's filter is never written. The first change makes, in the loot filter's filters folder:
+
+- `<name> (my version).json`: the copy the game loads (the loot filter's id `user:<name> (my version).json`): the
+  author's filter with the changes, rules switched off left out, its own title, no `updateUrl`;
+- `esr-filter-editor\<name>.changes.json`: the changes, by R### id, each with the author's value when it was made;
+- `sounds\`, `icons\`: the author's files (the loot filter only looks next to the filter); `esr-filter-editor\assets.txt`
+  lists what the editor copied, and nothing else is ever overwritten.
+
+and switches `selection.json` to the copy, giving it the level the player had. When the game starts, every copy whose
+author's filter changed is merged again (the launcher updates those before the game starts). Where the author changed
+what the player changed, or deleted a rule the player changed, the copy keeps the player's version and the editor asks
+when it opens next (Escape keeps the player's version).

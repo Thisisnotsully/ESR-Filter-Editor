@@ -10,7 +10,7 @@ set(ESR_MOD_DATA "/home/claude/ref/moddata" CACHE PATH "Folder with excel/ and s
 set(ESR_FILTER "/home/claude/qol-filter/Sullys-QoL-Filter.json" CACHE FILEPATH "A filter to describe")
 
 set(SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../src")
-foreach(part document gamedata overlay ui)
+foreach(part document gamedata edit overlay ui)
     if(NOT TARGET ${part})
         add_subdirectory("${SRC}/${part}" "${CMAKE_CURRENT_BINARY_DIR}/${part}")
     endif()

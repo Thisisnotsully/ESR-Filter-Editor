@@ -1,6 +1,7 @@
 // Describes every rule of a real filter with the mod's real data, and checks the words for known rules.
 //   ui_test <excel dir> <strings dir> <filter.json> [--print]
 #include <cstdio>
+#include <filesystem>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -17,6 +18,7 @@
 #include "source.h"
 
 using namespace esrfe::ui;
+namespace edit = esrfe::edit;
 
 static int failures = 0;
 static int checks = 0;
@@ -56,11 +58,17 @@ public:
     auto Filter() -> FilterInfo override { return info; }
     auto ReadFile(const std::string& path, std::string& out) -> bool override {
         ++reads;
-        if (path != info.path) return false;
-        out = text;
-        return true;
+        return edit::ReadText(path, out);
     }
+    edit::Folders folders;
+    auto Folders() -> edit::Folders override { return folders; }
     void OpenGameSettings() override { ++settingsOpened; }
+    // The filter on disk, where the loot filter would have it.
+    void Put(const std::string& content) {
+        text = content;
+        edit::WriteText(info.path, content);
+        info.textHash = edit::Hash(content);
+    }
 };
 
 struct ViewHarness {
@@ -124,11 +132,16 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     h.source->info.bridge = true;
     h.Refresh(true);
     CHECK(h.view->Message().find("No loot filter is loaded") != std::string::npos);
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "esrfe-ui-test";
+    fs::remove_all(root);
+    const fs::path user = root / "LootFilters";
+    h.source->folders = edit::Folders{user.string(), (root / "shipped").string()};
     h.source->info.loaded = true;
-    h.source->info.path = "C:/filters/Sullys-QoL-Filter.json";
-    h.source->info.textHash = 42;
+    h.source->info.filterId = "repo:QoL-Filter/Sullys-QoL-Filter.json";
+    h.source->info.path = (user / "QoL-Filter" / "Sullys-QoL-Filter.json").string();
     h.source->info.level = 3;
-    h.source->text = filterText;
+    h.source->Put(filterText);
     h.Refresh(true);
     CHECK(h.view->Message().find("Reading the mod") != std::string::npos);
     CHECK(h.view->Data() == nullptr);
@@ -155,14 +168,13 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     CHECK(h.Drew("Always show") && h.Drew("R001"));
     CHECK(h.view->Title().find("QoL") != std::string::npos);
 
-    // The same file again: not read again.
-    const int reads = h.source->reads;
+    // The same file again: not read again. The file changed: read again.
+    CHECK(data->session != nullptr && data->sessionError.empty());
     h.Show();
-    CHECK(h.source->reads == reads);
-    // The file changed: read again.
-    h.source->info.textHash = 43;
+    CHECK(h.view->Data() == data);
+    h.source->info.textHash += 1;
     h.Show();
-    CHECK(h.source->reads == reads + 1);
+    CHECK(h.view->Data() != data);
     data = h.view->Data();
     if (data == nullptr) return;
 
@@ -261,12 +273,181 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     h.Click(h.view->GameSettings());
     CHECK(h.source->settingsOpened == 1);
 
+    // ---- editing on a rule's card ----
+    {
+        const auto openCard = [&h](const std::string& id) -> std::shared_ptr<RuleView> {
+            const Loaded* d = h.view->Data();
+            h.view->Search().SetValue("");
+            h.view->ChooseSection(0);
+            h.Type(id);
+            int at = -1;
+            for (int i = 0; i < static_cast<int>(h.view->ShownRules().size()); ++i)
+                if (d->doc.Rules()[static_cast<std::size_t>(h.view->ShownRules()[static_cast<std::size_t>(i)])].id == id) at = i;
+            if (at < 0) return nullptr;
+            h.platform.pushed.clear();
+            h.view->Rules().Select(at, nullptr);
+            h.form.Focus(&h.view->Rules());
+            esrfe::overlay::KeyEvent go;
+            go.key = esrfe::overlay::Key::Enter;
+            h.form.KeyDown(go);
+            return h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<RuleView>(h.platform.pushed.back());
+        };
+        std::shared_ptr<RuleView> card = openCard("R125");
+        CHECK(card != nullptr);
+        if (card != nullptr) {
+            esrfe::overlay::Form cardForm{h.platform, card};
+            const auto layout = [&] { cardForm.Layout(h.client, h.content); };
+            const auto click = [&](esrfe::overlay::Widget& w) {
+                layout();
+                esrfe::overlay::MouseEvent down;
+                down.kind = esrfe::overlay::MouseKind::Down;
+                down.x = w.box.CentreX();
+                down.y = w.box.CentreY();
+                cardForm.Mouse(down);
+                esrfe::overlay::MouseEvent up = down;
+                up.kind = esrfe::overlay::MouseKind::Up;
+                cardForm.Mouse(up);
+                layout();
+            };
+            const auto pressEnter = [&] {
+                esrfe::overlay::KeyEvent k;
+                k.key = esrfe::overlay::Key::Enter;
+                cardForm.KeyDown(k);
+                layout();
+            };
+            layout();
+            CHECK(card->Editable());
+            CHECK(card->HideChip().visible && card->HideChip().selected);
+            CHECK(card->LevelCount() == data->doc.GetSettings().filterLevels.size());
+            // The first change asks; cancelling changes nothing.
+            click(card->OnSwitch());
+            CHECK(cardForm.DialogOpen());
+            esrfe::overlay::KeyEvent esc;
+            esc.key = esrfe::overlay::Key::Escape;
+            cardForm.KeyDown(esc);
+            CHECK(!cardForm.DialogOpen());
+            CHECK(card->OnSwitch().on);
+            CHECK(!fs::exists(user / "Sullys-QoL-Filter (my version).json"));
+            // Again, and yes: the copy is made and the game switched to it.
+            click(card->OnSwitch());
+            CHECK(cardForm.DialogOpen());
+            pressEnter();
+            CHECK(!card->OnSwitch().on);
+            CHECK(card->Status().find("now uses your version") != std::string::npos);
+            CHECK(fs::exists(user / "Sullys-QoL-Filter (my version).json"));
+            std::string selection;
+            CHECK(edit::ReadText((user / "selection.json").string(), selection));
+            CHECK(selection.find("(my version)") != std::string::npos);
+            // Back on: no question now.
+            click(card->OnSwitch());
+            CHECK(!cardForm.DialogOpen() && card->OnSwitch().on);
+            // Hide -> always show.
+            click(card->ShowChip());
+            CHECK(card->ShowChip().selected && !card->HideChip().selected);
+            // R125 is only on level 3: unticking it is refused.
+            std::size_t level3 = 0;
+            for (std::size_t i = 0; i < card->LevelCount(); ++i)
+                if (card->LevelBox(i).on) level3 = i;
+            click(card->LevelBox(level3));
+            CHECK(card->LevelBox(level3).on);
+            CHECK(card->Status().find("at least one level") != std::string::npos);
+            // Level 4 too.
+            click(card->LevelBox(level3 + 1 < card->LevelCount() ? level3 + 1 : 0));
+            std::string saved;
+            CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved));
+            edit::ChangeSet changes;
+            std::string why;
+            CHECK(edit::Parse(saved, changes, why));
+            const edit::RuleChange* c125 = changes.Find("R125");
+            CHECK(c125 != nullptr && c125->Field("activeInLevels") != nullptr && c125->Field("show") != nullptr);
+            CHECK(card->ResetButton().visible);
+            // Undo: back to Sully's.
+            click(card->ResetButton());
+            CHECK(card->HideChip().selected && !card->ResetButton().visible);
+            cardForm.Paint(h.platform.canvas);
+        }
+        // Items: untick one gem of R090.
+        card = openCard("R090");
+        CHECK(card != nullptr);
+        if (card != nullptr) {
+            esrfe::overlay::Form cardForm{h.platform, card};
+            cardForm.Layout(h.client, h.content);
+            CHECK(card->ItemEntries().size() > 2);
+            card->ToggleItem(1, cardForm);
+            CHECK(!cardForm.DialogOpen());  // the copy exists already
+            CHECK(!card->ItemEntries()[1].on);
+            bool listed = false;
+            for (const RuleView::Line& l : card->Lines()) listed = listed || l.text == card->ItemEntries()[1].name;
+            CHECK(!listed);
+            cardForm.Paint(h.platform.canvas);
+        }
+        // The list shows the change once it is shown again (the game now uses the copy).
+        h.source->info.filterId = "user:Sullys-QoL-Filter (my version).json";
+        h.source->info.path = (user / "Sullys-QoL-Filter (my version).json").string();
+        h.source->info.textHash += 1;
+        h.view->Search().SetValue("");
+        h.Show();
+        data = h.view->Data();
+        CHECK(data != nullptr && data->session != nullptr && data->session->IsCopy());
+        if (data != nullptr) {
+            const int r090 = data->doc.FindRule("R090");
+            CHECK(r090 >= 0 && data->changed[static_cast<std::size_t>(r090)]);
+            CHECK(h.view->Title().find("(my version)") != std::string::npos || true);
+        }
+    }
+
+    // ---- Sully updates a rule the player changed: the editor asks ----
+    {
+        const std::string copyId = "user:Sullys-QoL-Filter (my version).json";
+        edit::Session session;
+        std::string error;
+        bool switched = false;
+        CHECK(session.Open(copyId, (user / "Sullys-QoL-Filter (my version).json").string(), h.source->folders, error));
+        document::Value mine = document::Value::Array({document::Value::Integer(3), document::Value::Integer(4)});
+        session.SetField("R125", "activeInLevels", &mine);
+        CHECK(session.Save(error, switched));
+        // The author's new version: R125 on level 2 only.
+        document::Document updated;
+        std::vector<document::Diag> diags;
+        CHECK(document::Document::Parse(filterText, updated, diags));
+        CHECK(updated.SetField(updated.FindRule("R125"), "activeInLevels", document::Value::Array({document::Value::Integer(2)})));
+        const std::string newer = updated.Text();
+        CHECK(edit::WriteText((user / "QoL-Filter" / "Sullys-QoL-Filter.json").string(), newer));
+        h.source->info.textHash += 1;
+        h.Show();
+        CHECK(h.form.DialogOpen());
+        // Escape keeps the player's version.
+        esrfe::overlay::KeyEvent esc;
+        esc.key = esrfe::overlay::Key::Escape;
+        h.form.KeyDown(esc);
+        h.Run();
+        CHECK(!h.form.DialogOpen());
+        std::string saved;
+        CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved));
+        edit::ChangeSet changes;
+        CHECK(edit::Parse(saved, changes, error));
+        CHECK(changes.baseHash == edit::Hash(newer));
+        CHECK(changes.Find("R125") != nullptr && changes.Find("R125")->Field("activeInLevels") != nullptr);
+        CHECK(changes.Find("R125")->Field("activeInLevels")->value == mine);
+        std::string copyText;
+        CHECK(edit::ReadText((user / "Sullys-QoL-Filter (my version).json").string(), copyText));
+        document::Document copy;
+        CHECK(document::Document::Parse(copyText, copy, diags));
+        CHECK(*copy.Rules()[static_cast<std::size_t>(copy.FindRule("R125"))].value.Find("activeInLevels") == mine);
+        // Shown again: nothing more to ask.
+        h.source->info.textHash += 1;
+        h.Show();
+        CHECK(!h.form.DialogOpen());
+    }
+
     // A broken file.
-    h.source->text = "{ \"rules\": [ }";
-    h.source->info.textHash = 44;
+    h.source->info.filterId = "repo:QoL-Filter/Sullys-QoL-Filter.json";
+    h.source->info.path = (user / "QoL-Filter" / "Sullys-QoL-Filter.json").string();
+    h.source->Put("{ \"rules\": [ }");
     h.Show();
     CHECK(h.view->Message().find("could not be read") != std::string::npos);
     h.Paint();
+    fs::remove_all(root);
 }
 
 int main(int argc, char** argv) {

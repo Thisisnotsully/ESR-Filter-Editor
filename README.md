@@ -143,3 +143,18 @@ Build and install with `build-and-install.bat` (game closed). Then, in game, wit
 - [ ] **Game loot filter settings** closes the editor and opens the game's own screen (the log says "asked the game to open its loot filter screen", then "OpenLootFilter passed to the game"). Choose another level there, open the editor again: the level follows.
 - [ ] Edit the filter file in a text editor while the game runs, save it, then open the editor again: it shows the change.
 - [ ] `lfeditor-demo` still opens the controls demo over the list.
+
+## Milestone 3: changing rules (test build)
+
+Build and install with `build-and-install.bat` (game and launcher closed). With Sully's QoL Filter loaded:
+
+- [ ] Open a rule. On the right: **Rule is on**, **What it does** (Hide / Always show / Neither) on rules that hide or show, the **filter levels**, and the **items** (rules with two or more).
+- [ ] Change something. The editor asks "Make your own version?". **Cancel** changes nothing. **Make my version**: the status says the game now uses your version, and the game's loot filter switches to "Sully's QoL Filter (my version)" at the same level (the loot filter log says it loaded it).
+- [ ] In `Saved Games\Diablo II Resurrected\mods\Eastern_Sun_Resurrected\LootFilters`: `Sullys-QoL-Filter (my version).json`, `esr-filter-editor\Sullys-QoL-Filter.changes.json`, and the `sounds` and `icons` folders.
+- [ ] Switch a rule off: it is gone from the game (an item it hid shows, an item it labelled is plain). In the list it shows **Off**, greyed.
+- [ ] Change a hide rule to **Always show** and drop that item: it shows. Untick one item of a long list: only that one changes.
+- [ ] Untick every level, or the last item: the editor refuses and says why.
+- [ ] **Undo my changes to this rule** puts Sully's version back. Changed rules say "changed" in the list.
+- [ ] Sounds and minimap icons still work with your version.
+- [ ] Choose Sully's original filter in the launcher and open the editor: your changes are still there; the next change switches back to your version.
+- [ ] Update check (I can make the test file): put an older or newer Sully filter in `QoL-Filter\`, start the game: the log says your copy is up to date. If a rule you changed was changed by Sully too, opening the editor asks; Escape keeps yours.

@@ -134,6 +134,7 @@ auto SpecWords(const Value& v, const std::array<Named, N>* table, const char* un
 
 class Describer {
 public:
+    friend auto esrfe::ui::EntryName(std::string_view, const document::Value&, const DescribeContext&, bool) -> std::string;
     Describer(const Value& rule, const DescribeContext& c) : rule_(rule), c_(c) {}
 
     auto Run() -> RuleSummary {
@@ -474,6 +475,17 @@ auto JoinNames(const std::vector<std::string>& names, std::size_t shown) -> std:
     std::string head;
     for (std::size_t i = 0; i + 1 < names.size(); ++i) head += (i == 0 ? "" : ", ") + names[i];
     return UiFormat("{0} and {1}", {head, names.back()});
+}
+
+auto EntryName(std::string_view key, const Value& entry, const DescribeContext& context, bool setItems) -> std::string {
+    const Value none = Value::Object();
+    Describer d(none, context);
+    d.wantsSet_ = setItems;
+    std::int64_t id = 0;
+    if (key == "itemCodes" && entry.IsString()) return d.BaseName(entry.Str());
+    if (key == "itemTypes" && entry.IsString()) return d.TypeName(entry.Str());
+    if (key == "uniqueOrSetIds" && entry.AsInteger(id)) return d.UniqueOrSetName(id);
+    return entry.IsString() ? entry.Str() : document::Render(entry);
 }
 
 auto Describe(const Value& rule, const DescribeContext& context) -> RuleSummary {
