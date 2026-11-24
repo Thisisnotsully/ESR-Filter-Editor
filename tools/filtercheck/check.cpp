@@ -159,6 +159,7 @@ struct Item final : ItemSubject {
     std::string code;
     int quality{ 2 }, tier{ -1 }, ilvl{ 85 };
     bool identified{ true };
+    int uniqueId{ -1 };
     std::map<int, int> stats;
     auto Code() const -> std::uint32_t override { return PackItemCode(code); }
     auto Quality() const -> int override { return quality; }
@@ -169,7 +170,7 @@ struct Item final : ItemSubject {
     auto Ethereal() const -> bool override { return false; }
     auto Identified() const -> bool override { return identified; }
     auto Runeword() const -> bool override { return false; }
-    auto UniqueOrSetId() const -> int override { return -1; }
+    auto UniqueOrSetId() const -> int override { return uniqueId; }
     auto Where() const -> Location override { return Location::Ground; }
     auto Area() const -> int override { return 2; }  // Blood Moor: outside town
     auto IsType(int row) const -> bool override {
@@ -248,6 +249,7 @@ auto main(int argc, char** argv) -> int {
                     if (p.size() != 2) continue;
                     const std::string key = Trim(p[0]);
                     if (key == "unid") { item.identified = false; continue; }
+                    if (key == "uid") { item.uniqueId = std::atoi(p[1].c_str()); continue; }
                     item.stats[D.statId.count(key) ? D.statId[key] : std::atoi(key.c_str())] = std::atoi(p[1].c_str());
                 }
             }

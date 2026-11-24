@@ -38,3 +38,13 @@ Normal Mythical base m45 (L2, not hidden)     | m45 | 2 | 2 | 2 | - | shown
 # 7wd is an ordinary elite sword, not a Mythical
 Normal 7wd elite sword (L3)                   | 7wd | 2 | 2 | 3 | - | hidden nomatch:R116
 Normal 7wd elite sword, clvl 90 (L1)          | 7wd | 2 | 2 | 1 | - | hidden match:R096
+# au9: only the Lich King Essences (rows 1090-1095) are Mythical; the other au9 uniques are ordinary unique amulets
+Unique Lich King Essence Fire (au9)           | au9 | 7 | -1 | 4 | uid=1090 | shown match:R705 match:R165 nomatch:R155 nomatch:R001
+Unique Mara's Kaleidoscope (au9)              | au9 | 7 | -1 | 4 | uid=962 | shown match:R155 nomatch:R165 nomatch:R705
+Unique Highlord's Wrath (au9, not Mythical)   | au9 | 7 | -1 | 4 | uid=966 | match:R155 nomatch:R165
+Unique Mythical Highlord's Wrath (mam)        | mam | 7 | -1 | 4 | uid=1098 | shown match:R001 match:R199
+Unique Vessel of Souls (mam)                  | mam | 7 | -1 | 4 | uid=1099 | shown match:R001 match:R199
+# ESR crystals and perfect gems: gold background; crystals get their game name without the item level
+Flawed crystal xl0                            | xl0 | 2 | -1 | 2 | - | match:R212 match:R706
+Crystal xty                                   | xty | 2 | -1 | 2 | - | match:R212 match:R729
+Perfect gem gbk                               | gbk | 2 | -1 | 2 | - | match:R220
