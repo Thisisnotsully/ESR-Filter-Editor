@@ -898,7 +898,12 @@ auto main(int argc, char** argv) -> int {
     TestSyntax();
     std::printf("round trips\n");
     TestRoundTrip(path);
-    const Document real = MustParse(ReadFile(path));
+    // The model and edit tests were written against 0.9.4 (729 rules, its ids and layout): they read that version from
+    // the filter's git history, so later filter changes do not move them. The round trips above take the file as it is.
+    const std::string dir = path.substr(0, path.rfind('/'));
+    const std::string pinned = RunCommand("git -C '" + dir + "' show da7c826:Sullys-QoL-Filter.json 2>/dev/null");
+    CHECK(pinned.size() > 100000);
+    const Document real = MustParse(pinned);
     std::printf("read model\n");
     TestReadModel(real);
     std::printf("field edits\n");

@@ -1,0 +1,7 @@
+# The loot filter's engine on a copy with two own rules (edit_test writes it as its third argument):
+#   U001, top: hide superior caps (the author always shows a superior cap with +1 maximum curses)
+#   U002, end, keepShown: a red border on superior light crossbows (the author hides plain ones on level 4)
+# Format: tools/filtercheck/scenarios.txt.
+Superior cap, +1 maximum curses               | cap | 3 | 0 | 4 | extra_curse=1 | hidden match:U001
+Superior crossbow, no special roll (L4)       | lxb | 3 | 0 | 4 | - | shown match:U002
+Magic crossbow (not superior: no highlight)   | lxb | 4 | 0 | 4 | - | nomatch:U002

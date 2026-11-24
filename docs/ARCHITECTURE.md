@@ -12,7 +12,7 @@ for Eastern Sun Resurrected. A D2RLoader plugin DLL
 | `src/gamedata/` | The mod's tables and strings, read from the mod's data folder: item types, bases (and Mythicals), uniques, sets, affixes, superior bonuses, stats with their tooltip wording, in the player's language. | standard C++ only | on Linux, against the real mod files |
 | `src/edit/` | A player's changes to a filter they did not write (`changes`: per R### rule, only what they changed, with the author's value at the time), the merge into their own copy, conflicts with the author's updates, and the session that opens, edits and saves (`session`: the files, the sounds and icons, the switch in `selection.json`). | document, std::filesystem | on Linux, `tests/edit` (real filter, real folders) |
 | `src/overlay/` | The window: a Win32 overlay on its own UI thread, taken from the ESR Wiki overlay (window, DPI scaling, cursor, controller, on-screen keyboard, input block, UI strings). Knows nothing about filters: it hosts views. | Win32, GDI/GDI+, XInput, HID | in game |
-| `src/ui/` | The editor's views drawn with the overlay's toolkit, on top of document + gamedata: rules in plain words (`rule_text`), the browse view, the rule card; later the add-rule steps. What they need from the plugin is `source.h`. | the three above | on Linux, `tests/ui` (real filter and mod data), and in game |
+| `src/ui/` | The editor's views drawn with the overlay's toolkit, on top of document + gamedata: rules in plain words (`rule_text`), the browse view, the rule card, the add-rule steps (`add_rule_view`) over `rule_draft` (the player's choices to a rule and back). What they need from the plugin is `source.h`. | the three above | on Linux, `tests/ui` (real filter and mod data), and in game |
 | `src/plugin.cpp` | D2RLoader entry: services, key bindings, console command, the bridge lease, opening the window. | the SDK | in game |
 | `tools/filtercheck/` | Checks for Sully's QoL Filter (see its README). | g++, Python | Linux |
 
@@ -73,3 +73,12 @@ and switches `selection.json` to the copy, giving it the level the player had. W
 author's filter changed is merged again (the launcher updates those before the game starts). Where the author changed
 what the player changed, or deleted a rule the player changed, the copy keeps the player's version and the editor asks
 when it opens next (Escape keeps the player's version).
+
+## The player's own rules
+
+Rules the player adds are kept whole in the changes file with a U### id and a place:
+- hide and always-show rules go to a "My Rules" part made first in the copy, so they beat the author's rules (the
+  first hide stops an item; a show protects it from every later hide);
+- highlights go to a "My Highlights" part made last, so their border, beam and name are the ones drawn (a later
+  rule's replace an earlier one's), and a show-only copy of each goes to "My Rules" so no author rule hides it.
+The editor's own view leaves the show-only copies out.

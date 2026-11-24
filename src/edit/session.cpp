@@ -222,6 +222,7 @@ void Session::Rebuild() {
     options.keepOff = true;
     options.findConflicts = false;
     options.titleSuffix.clear();
+    options.companions = false;
     const MergeResult view = Merge(baseText_, changes_, options);
     viewText_ = view.ok ? view.text : baseText_;
     notes_ = view.notes;
@@ -244,8 +245,63 @@ auto Session::Effective(const std::string& id) const -> Value {
 }
 
 auto Session::IsOff(const std::string& id) const -> bool {
+    if (const OwnRule* own = Own(id)) return own->off;
     const RuleChange* change = changes_.Find(id);
     return change != nullptr && change->off;
+}
+
+auto Session::Own(const std::string& id) const -> const OwnRule* {
+    for (const OwnRule& own : changes_.own)
+        if (own.id == id) return &own;
+    return nullptr;
+}
+
+namespace {
+
+// "U004 | <what the title said without an id> | <action>"
+void TitleWithId(OwnRule& own) {
+    Value* title = own.rule.Find("comment");
+    std::string text = title != nullptr && title->IsString() ? title->Str() : std::string{};
+    if (text.size() > 1 && (text[0] == 'U' || text[0] == 'R')) {  // an id already there: replaced
+        std::size_t i = 1;
+        while (i < text.size() && text[i] >= '0' && text[i] <= '9') ++i;
+        if (i > 1 && text.compare(i, 3, " | ") == 0) text = text.substr(i + 3);
+    }
+    own.rule.Set("comment", Value::String(own.id + " | " + (text.empty() ? std::string("my rule | ") : text)));
+}
+
+}  // namespace
+
+auto Session::AddOwn(OwnRule rule) -> std::string {
+    rule.id = changes_.NextOwnId();
+    TitleWithId(rule);
+    changes_.own.push_back(std::move(rule));
+    Rebuild();
+    return changes_.own.back().id;
+}
+
+void Session::ReplaceOwn(const std::string& id, OwnRule rule) {
+    for (OwnRule& own : changes_.own) {
+        if (own.id != id) continue;
+        rule.id = id;
+        rule.off = own.off;
+        TitleWithId(rule);
+        own = std::move(rule);
+        Rebuild();
+        return;
+    }
+}
+
+void Session::RemoveOwn(const std::string& id) {
+    changes_.own.erase(std::remove_if(changes_.own.begin(), changes_.own.end(), [&](const OwnRule& o) { return o.id == id; }),
+                       changes_.own.end());
+    Rebuild();
+}
+
+void Session::SetOwnOff(const std::string& id, bool off) {
+    for (OwnRule& own : changes_.own)
+        if (own.id == id) own.off = off;
+    Rebuild();
 }
 
 void Session::SetOff(const std::string& id, bool off) {

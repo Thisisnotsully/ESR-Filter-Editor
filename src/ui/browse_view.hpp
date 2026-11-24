@@ -4,6 +4,7 @@
 // (RuleView). Read-only until the editing milestone.
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -54,6 +55,15 @@ struct Loaded {
     auto Build(std::string text) -> bool;
 };
 
+// Runs a change to the player's version and saves it. The first change (no copy yet, no changes) asks first: "Make
+// your own version?". `done` gets the save's outcome; `cancelled` runs when the player says no. `alive` guards the
+// caller (a view that may be gone when the answer comes).
+void CommitChange(Ui& ui, const std::shared_ptr<Loaded>& loaded, const std::shared_ptr<bool>& alive,
+                  std::function<void(edit::Session&)> change,
+                  std::function<void(Ui&, bool ok, bool switched, const std::string& error)> done, std::function<void(Ui&)> cancelled);
+
+struct RuleDraft;
+
 class BrowseView final : public overlay::View {
 public:
     explicit BrowseView(std::shared_ptr<Source> source);
@@ -75,6 +85,10 @@ public:
     void Refresh(Ui& ui, bool force = false);
     // The second half of Refresh, with the loot filter's answer.
     void Apply(const FilterInfo& info, Ui& ui, bool force = false);
+    // Opens the add-rule steps; from the hover key with the item's draft, made once the mod's data is in. Waits for
+    // the filter when it is not read yet.
+    using DraftMaker = std::function<RuleDraft(const gamedata::GameData&)>;
+    void StartRule(Ui& ui, DraftMaker makeDraft);
 
     // For tests.
     [[nodiscard]] auto Data() const -> const Loaded* { return loaded_.get(); }
@@ -91,6 +105,7 @@ public:
     auto Rules() -> overlay::ListView& { return ruleList_; }
     auto Levels() -> overlay::Dropdown& { return level_; }
     auto GameSettings() -> overlay::Button& { return gameSettings_; }
+    auto AddRule() -> overlay::Button& { return addRule_; }
     void ChooseSection(int row);  // a row of the left list, as showing
     void ToggleRow(int row);      // opens or closes a part
 
@@ -130,6 +145,9 @@ private:
     overlay::Label levelLabel_;
     overlay::Dropdown level_;
     overlay::Button gameSettings_;
+    overlay::Button addRule_;
+    DraftMaker pendingDraft_;  // the hover key's rule, waiting for the filter
+    bool pendingRule_ = false;
     overlay::Label info_;
     overlay::ListView sectionList_;
     overlay::Label count_;

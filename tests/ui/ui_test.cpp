@@ -1,6 +1,7 @@
 // Describes every rule of a real filter with the mod's real data, and checks the words for known rules.
 //   ui_test <excel dir> <strings dir> <filter.json> [--print]
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <cstring>
 #include <fstream>
@@ -13,6 +14,8 @@
 #include "gamedata.h"
 #include "browse_view.hpp"
 #include "fakes.hpp"
+#include "add_rule_view.hpp"
+#include "rule_draft.h"
 #include "rule_text.h"
 #include "rule_view.hpp"
 #include "source.h"
@@ -122,6 +125,95 @@ struct ViewHarness {
 };
 
 static auto RuleIndex(const document::Document& doc, const std::string& id) -> int { return doc.FindRule(id); }
+
+static void DraftTests(const gamedata::GameData& game, const char* outPath) {
+    const int allSkills = game.stats.Id("item_allskills");
+    const int tab = game.stats.Id("item_addskill_tab");
+    CHECK(allSkills >= 0 && tab >= 0);
+    // A superior Mystic Staff with +1 to All Skills (superior) and +2 to a skill tab (its automagic).
+    RuleDraft d = FromItem("1ls", 3, {{allSkills, 0, 1}, {tab, 10, 2}}, game);
+    CHECK(d.bases == std::vector<std::string>{"1ls"});
+    CHECK(d.tiers.size() == 1 && *d.tiers.begin() == gamedata::Tier::Elite);
+    CHECK(d.rarities == std::set<int>{3});
+    CHECK(d.stats.size() == 1 && d.stats[0].stat == allSkills && d.stats[0].atLeast == 1);  // the tab is not a superior bonus
+    DraftOffer offer = Offer(d, game);
+    CHECK(offer.statsPossible && offer.stats.size() > 10);
+    CHECK(offer.rarities.count(3) && offer.rarities.count(4) && offer.rarities.count(7));
+    bool skillLevel = false;
+    for (const StatOption& o : offer.stats) {
+        const gamedata::Stat* s = game.stats.At(o.stat);
+        skillLevel = skillLevel || (s != nullptr && s->param == gamedata::ParamKind::SkillLevel);
+        CHECK(o.min >= 1 && o.max >= o.min && !o.label.empty());
+    }
+    CHECK(!skillLevel);
+    // Superior and magic together: no stats.
+    RuleDraft both = d;
+    both.rarities = {3, 4};
+    CHECK(!Offer(both, game).statsPossible);
+    Tidy(both, game);
+    CHECK(both.stats.empty());
+    // Magic: the magic affixes, many more.
+    RuleDraft magic = d;
+    magic.rarities = {4};
+    magic.stats.clear();
+    CHECK(Offer(magic, game).stats.size() > Offer(d, game).stats.size());
+    // A ring has no superior version.
+    RuleDraft ring = FromItem("rin", 6, {}, game);
+    CHECK(!Offer(ring, game).rarities.count(3) && !Offer(ring, game).tiers);
+
+    // To a rule and back.
+    d.action = DraftAction::Highlight;
+    d.color = 1;
+    d.beam = true;
+    edit::OwnRule own = ToRule(d, game, "Superior Mystic Staff with +1 to All Skills");
+    CHECK(own.place == "end" && own.keepShown);
+    CHECK(own.rule.Find("labelBorder") != nullptr && own.rule.Find("droplight") != nullptr);
+    CHECK(own.rule.Find("quality") != nullptr && own.rule.Find("quality")->Str() == "superior");
+    CHECK(own.rule.Find("isIdentified") != nullptr && own.rule.Find("baseTier") == nullptr);  // only elite was possible
+    RuleDraft back;
+    CHECK(FromRule(own.rule, game, back));
+    CHECK(back.action == DraftAction::Highlight && back.color == 1 && back.beam && back.stats.size() == 1);
+    CHECK(ToRule(back, game, "Superior Mystic Staff with +1 to All Skills").rule == own.rule);
+    // Hide: on top.
+    RuleDraft hide = FromItem("cap", 2, {}, game);
+    hide.action = DraftAction::Hide;
+    hide.levels = {3, 4};
+    edit::OwnRule hideRule = ToRule(hide, game, "Normal caps");
+    CHECK(hideRule.place == "top" && hideRule.rule.Find("hide") != nullptr && hideRule.rule.Find("activeInLevels")->array.size() == 2);
+    // Mythicals: a weapons pick with Mythicals left out.
+    RuleDraft axes;
+    axes.action = DraftAction::Show;
+    axes.bases = {"axe", "m01", "7wd"};
+    axes.mythical = MythicalMode::Leave;
+    CHECK(Offer(axes, game).mythicals);
+    CHECK(ChosenBases(axes, game) == (std::vector<std::string>{"axe", "7wd"}));  // 7wd is not a Mythical
+    edit::OwnRule axesRule = ToRule(axes, game, "Axes");
+    CHECK(axesRule.rule.Find("excludeItemCodes") != nullptr && axesRule.rule.Find("excludeItemCodes")->array.size() == 1);
+    axes.mythical = MythicalMode::Only;
+    CHECK(ChosenBases(axes, game) == std::vector<std::string>{"m01"});
+    CHECK(ToRule(axes, game, "Mythical axes").rule.Find("itemCodes")->array.size() == 1);
+    CHECK(!Complete(RuleDraft{}) && Complete(axes));
+
+    // The loot filter's own reader must take them: written for tools/filtercheck (tests/ui/draft-rules.txt).
+    if (outPath != nullptr) {
+        edit::ChangeSet changes;
+        // As the session does: the id in front of the title.
+        const auto add = [&changes](edit::OwnRule r, const char* id) {
+            r.id = id;
+            r.rule.Set("comment", document::Value::String(std::string(id) + " | " + r.rule.Find("comment")->Str()));
+            changes.own.push_back(std::move(r));
+        };
+        add(own, "U001");
+        add(hideRule, "U002");
+        add(axesRule, "U003");
+        std::FILE* f = std::fopen(outPath, "wb");
+        if (f != nullptr) {
+            const std::string text = Render(changes);
+            std::fwrite(text.data(), 1, text.size(), f);
+            std::fclose(f);
+        }
+    }
+}
 
 static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, const std::string& filterText) {
     ViewHarness h;
@@ -396,6 +488,158 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         }
     }
 
+    // ---- the add-rule steps ----
+    {
+        h.source->info.textHash += 1;  // read the player's copy afresh
+        h.Show();
+        data = h.view->Data();
+        CHECK(data != nullptr && data->session != nullptr && data->session->IsCopy());
+        h.Paint();
+        CHECK(h.view->AddRule().visible);
+        h.platform.pushed.clear();
+        h.Click(h.view->AddRule());
+        CHECK(h.platform.pushed.size() == 1);
+        auto steps = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
+        CHECK(steps != nullptr);
+        if (steps != nullptr) {
+            esrfe::overlay::Form f{h.platform, steps};
+            const auto layout = [&] { f.Layout(h.client, h.content); };
+            const auto click = [&](esrfe::overlay::Widget& w) {
+                layout();
+                esrfe::overlay::MouseEvent down;
+                down.kind = esrfe::overlay::MouseKind::Down;
+                down.x = w.box.CentreX();
+                down.y = w.box.CentreY();
+                f.Mouse(down);
+                esrfe::overlay::MouseEvent up = down;
+                up.kind = esrfe::overlay::MouseKind::Up;
+                f.Mouse(up);
+                layout();
+            };
+            layout();
+            CHECK(!steps->Finish().enabled);
+            click(steps->HighlightChip());
+            CHECK(steps->Draft().action == DraftAction::Highlight);
+            click(steps->ColorChip(2));
+            CHECK(steps->Draft().color == 2);
+            click(steps->StepChip(AddRuleView::Step::Items));
+            CHECK(steps->CurrentStep() == AddRuleView::Step::Items);
+            // Search for the staff, tick it.
+            f.Focus(&steps->ItemSearch());
+            for (char16_t ch : esrfe::overlay::Utf8ToUtf16("mystic staff")) f.Char(ch);
+            layout();
+            int staff = -1;
+            for (int i = 0; i < static_cast<int>(steps->BaseRows().size()); ++i)
+                if (steps->BaseRows()[static_cast<std::size_t>(i)] == "1ls") staff = i;
+            CHECK(staff >= 0);
+            steps->ToggleBase(staff, f);
+            CHECK(steps->Draft().bases == std::vector<std::string>{"1ls"});
+            CHECK(steps->Finish().enabled);
+            // Rarity: superior only.
+            steps->GoTo(AddRuleView::Step::Rarity);
+            layout();
+            click(steps->RarityBox(1));  // Superior
+            CHECK(steps->Draft().rarities == std::set<int>{3});
+            // Stats: +All Skills.
+            steps->GoTo(AddRuleView::Step::Stats);
+            layout();
+            CHECK(steps->Offered().statsPossible && !steps->StatRows().empty());
+            int allSkills = -1;
+            for (int i = 0; i < static_cast<int>(steps->StatRows().size()); ++i)
+                if (steps->Offered().stats[static_cast<std::size_t>(steps->StatRows()[static_cast<std::size_t>(i)])].label.find("All Skills") != std::string::npos)
+                    allSkills = i;
+            CHECK(allSkills >= 0);
+            steps->ToggleStat(allSkills, f);
+            CHECK(steps->Draft().stats.size() == 1);
+            CHECK(steps->Summary().find("Highlight") != std::string::npos && steps->Summary().find("All Skills") != std::string::npos);
+            steps->GoTo(AddRuleView::Step::Check);
+            layout();
+            f.Paint(h.platform.canvas);
+            const int pops = h.platform.pops;
+            click(steps->Finish());
+            CHECK(!f.DialogOpen());  // the copy exists: no question
+            CHECK(h.platform.pops == pops + 1);
+            CHECK(steps->Status().empty());
+        }
+        // Saved: the changes and the game's copy.
+        {
+            std::string saved, error;
+            CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved));
+            edit::ChangeSet changes;
+            CHECK(edit::Parse(saved, changes, error));
+            CHECK(changes.own.size() == 1 && changes.own[0].id == "U001" && changes.own[0].place == "end" && changes.own[0].keepShown);
+            CHECK(changes.own[0].rule.Find("comment")->Str().rfind("U001 | Mystic Staff", 0) == 0);
+            std::string copyText;
+            CHECK(edit::ReadText((user / "Sullys-QoL-Filter (my version).json").string(), copyText));
+            document::Document copy;
+            std::vector<document::Diag> diags;
+            CHECK(document::Document::Parse(copyText, copy, diags));
+            CHECK(copy.FindHeading("My Highlights") >= 0 && copy.FindHeading("My Rules") == 0);
+        }
+        // The list shows it, marked as yours; its card can change it.
+        h.source->info.textHash += 1;
+        h.Show();
+        data = h.view->Data();
+        const int u1 = data != nullptr ? data->doc.FindRule("U001") : -1;
+        CHECK(u1 >= 0 && data->changed[static_cast<std::size_t>(u1)]);
+        CHECK(data->doc.FindHeading("My Rules") < 0);  // the show-only copy is not in the editor's view
+        h.view->Search().SetValue("");
+        h.view->ChooseSection(0);
+        h.form.Focus(&h.view->Search());
+        h.Type("U001");
+        CHECK(h.view->ShownRules().size() == 1);
+        h.platform.pushed.clear();
+        h.form.Focus(&h.view->Rules());
+        esrfe::overlay::KeyEvent go;
+        go.key = esrfe::overlay::Key::Enter;
+        h.form.KeyDown(go);
+        auto card = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<RuleView>(h.platform.pushed.back());
+        CHECK(card != nullptr && card->Own());
+        if (card != nullptr) {
+            esrfe::overlay::Form cf{h.platform, card};
+            cf.Layout(h.client, h.content);
+            CHECK(card->ChangeButton().visible && card->DeleteButton().visible);
+            h.platform.pushed.clear();
+            card->ChangeButton().onClick(cf);
+            auto again = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
+            CHECK(again != nullptr);
+            if (again != nullptr) {
+                CHECK(again->Draft().action == DraftAction::Highlight && again->Draft().color == 2 && again->Draft().stats.size() == 1);
+                esrfe::overlay::Form af{h.platform, again};
+                af.Layout(h.client, h.content);
+                again->ColorChip(0).onClick(af);
+                again->Finish().onClick(af);
+                std::string saved, error;
+                edit::ChangeSet changes;
+                CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved) && edit::Parse(saved, changes, error));
+                CHECK(changes.own.size() == 1 && changes.own[0].id == "U001");  // the same rule, changed
+                RuleDraft d;
+                CHECK(changes.own.size() == 1 && FromRule(changes.own[0].rule, *data->game, d) && d.color == 0);
+            }
+            // Off, then delete.
+            card->OnSwitch().onChange(false, cf);
+            CHECK(data->session->IsOff("U001"));
+            card->DeleteButton().onClick(cf);
+            CHECK(cf.DialogOpen());
+            esrfe::overlay::KeyEvent enterKey;
+            enterKey.key = esrfe::overlay::Key::Enter;
+            cf.KeyDown(enterKey);  // "Cancel" has the focus first: nothing deleted
+            CHECK(data->session->Own("U001") != nullptr);
+            card->DeleteButton().onClick(cf);
+            esrfe::overlay::KeyEvent right;
+            right.key = esrfe::overlay::Key::Right;
+            cf.KeyDown(right);
+            cf.KeyDown(enterKey);
+            CHECK(data->session->Own("U001") == nullptr);
+        }
+        // The hover key: the item's rule, waiting for the filter when needed.
+        h.platform.pushed.clear();
+        h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("xhl", 3, {{g.stats.Id("extra_curse"), 0, 1}}, g); });
+        auto fromHover = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
+        CHECK(fromHover != nullptr && fromHover->Draft().bases == std::vector<std::string>{"xhl"} && fromHover->Draft().stats.size() == 1);
+        CHECK(fromHover != nullptr && fromHover->CurrentStep() == AddRuleView::Step::Action && !fromHover->Finish().enabled);
+    }
+
     // ---- Sully updates a rule the player changed: the editor asks ----
     {
         const std::string copyId = "user:Sullys-QoL-Filter (my version).json";
@@ -543,6 +787,7 @@ int main(int argc, char** argv) {
     CHECK(PickLanguage(names, gamedata::Language::deDE) == "Hallo");
     CHECK(PickLanguage(names, gamedata::Language::frFR) == "Hi");
 
+    DraftTests(game, std::getenv("ESRFE_DRAFT_OUT"));
     {
         auto shared = std::make_shared<gamedata::GameData>(std::move(game));
         ViewTests(shared, text.str());

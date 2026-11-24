@@ -69,6 +69,13 @@ public:
     void SetItem(const std::string& id, const std::string& key, const Value& entry, bool removed);
     void Reset(const std::string& id);  // back to the author's version
 
+    // The player's own rules. AddOwn gives the rule its U### id (and puts it in front of the title) and returns it.
+    auto AddOwn(OwnRule rule) -> std::string;
+    void ReplaceOwn(const std::string& id, OwnRule rule);  // keeps the id
+    void RemoveOwn(const std::string& id);
+    void SetOwnOff(const std::string& id, bool off);
+    [[nodiscard]] auto Own(const std::string& id) const -> const OwnRule*;
+
     void Resolve(const Conflict& conflict, bool keepMine);
     // The update is taken in: later merges compare with this version of the author's filter.
     void FinishConflicts();

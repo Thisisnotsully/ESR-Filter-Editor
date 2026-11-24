@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <initializer_list>
 
+#include "add_rule_view.hpp"
+#include "rule_draft.h"
 #include "ui_text.hpp"
 
 namespace esrfe::ui {
@@ -26,6 +28,7 @@ RuleView::RuleView(std::shared_ptr<Loaded> loaded, int rule) : loaded_(std::move
     id_ = r.id;
     edit::Session* session = loaded_->session.get();
     editable_ = session != nullptr && !id_.empty() && session->AuthorRule(id_) != nullptr;
+    own_ = session != nullptr && !id_.empty() && session->Own(id_) != nullptr && loaded_->game != nullptr;
 
     badge_.translate = false;
     badge_.font = Font::Bold;
@@ -67,7 +70,38 @@ RuleView::RuleView(std::shared_ptr<Loaded> loaded, int rule) : loaded_(std::move
 
     on_.label = "Rule is on";
     on_.onChange = [this](bool on, Ui& ui) {
-        Commit(ui, [this, on](edit::Session& s) { s.SetOff(id_, !on); });
+        if (own_) Commit(ui, [this, on](edit::Session& s) { s.SetOwnOff(id_, !on); });
+        else Commit(ui, [this, on](edit::Session& s) { s.SetOff(id_, !on); });
+    };
+    change_.label = "Change this rule";
+    change_.onClick = [this](Ui& ui) {
+        RuleDraft draft;
+        if (const edit::OwnRule* own = loaded_->session->Own(id_); own != nullptr && FromRule(own->rule, *loaded_->game, draft)) {
+            ui.PushView(std::make_shared<AddRuleView>(loaded_, draft, id_));
+        } else {
+            status_.text = UiText("This rule was not made with the add-rule steps, so they cannot change it.");
+            ui.Repaint();
+        }
+    };
+    delete_.label = "Delete this rule";
+    delete_.style = overlay::Button::Style::Danger;
+    delete_.onClick = [this](Ui& ui) {
+        overlay::DialogSpec spec;
+        spec.title = "Delete your rule?";
+        spec.message = UiFormat("Rule {0} goes away for good.", {id_});
+        spec.confirm = "Delete";
+        spec.danger = true;
+        std::shared_ptr<bool> alive = alive_;
+        ui.ShowDialog(spec, [this, alive, &ui](bool yes) {
+            if (!*alive || !yes) return;
+            CommitChange(
+                ui, loaded_, alive_, [this](edit::Session& s) { s.RemoveOwn(id_); },
+                [this](Ui& u, bool ok, bool, const std::string& error) {
+                    if (ok) u.PopView();
+                    else status_.text = UiFormat("Not saved: {0}", {error});
+                },
+                nullptr);
+        });
     };
 
     actionLabel_.text = "What it does";
@@ -125,7 +159,8 @@ RuleView::RuleView(std::shared_ptr<Loaded> loaded, int rule) : loaded_(std::move
     note_.flags = kLeft;
     if (!editable_) {
         if (session == nullptr) note_.text = UiFormat("This filter cannot be changed here: {0}", {loaded_->sessionError});
-        else if (id_.rfind('U', 0) == 0) note_.text = UiText("This is one of your own rules. Changing your own rules comes with adding rules.");
+        else if (own_) note_.text.clear();
+        else if (id_.rfind('U', 0) == 0) note_.text = UiText("This is one of your own rules, kept from a rule the author removed.");
         else note_.text = UiText("This rule has no R### id in its title, so the editor cannot keep a change to it through the author's updates.");
     }
 
@@ -152,7 +187,7 @@ RuleView::RuleView(std::shared_ptr<Loaded> loaded, int rule) : loaded_(std::move
 }
 
 auto RuleView::Current() const -> Value {
-    if (editable_) return loaded_->session->Effective(id_);
+    if (editable_ || own_) return loaded_->session->Effective(id_);
     return loaded_->doc.Rules()[static_cast<std::size_t>(rule_)].value;
 }
 
@@ -171,7 +206,7 @@ void RuleView::Describe() {
     if (s.conditions.empty()) add(Line::Kind::Item, UiText("Every time"));
     for (const std::string& c : s.conditions) add(Line::Kind::Item, c);
     add(Line::Kind::Heading, UiText("What it does"));
-    const bool off = editable_ && loaded_->session->IsOff(id_);
+    const bool off = (editable_ || own_) && loaded_->session->IsOff(id_);
     if (off) add(Line::Kind::Item, UiText("Nothing: you switched this rule off"));
     switch (s.action) {
         case Action::Hide: add(Line::Kind::Item, UiText("Hides the item on the ground")); break;
@@ -196,6 +231,18 @@ void RuleView::Describe() {
 }
 
 void RuleView::SyncControls() {
+    change_.visible = own_;
+    delete_.visible = own_;
+    if (own_) {
+        for (Widget* w : std::initializer_list<Widget*>{&actionLabel_, &hide_, &show_, &neither_, &levelsLabel_, &itemsLabel_, &items_, &reset_, &note_})
+            w->visible = false;
+        for (overlay::Checkbox& box : levels_) box.visible = false;
+        panel_.visible = true;
+        on_.visible = true;
+        status_.visible = true;
+        on_.on = !loaded_->session->IsOff(id_);
+        return;
+    }
     const bool show = editable_;
     for (Widget* w : std::initializer_list<Widget*>{&panel_, &on_, &reset_, &status_}) w->visible = show;
     note_.visible = !show;
@@ -304,44 +351,14 @@ void RuleView::ToggleItem(int index, Ui& ui) {
 }
 
 void RuleView::Commit(Ui& ui, std::function<void(edit::Session&)> change) {
-    if (!editable_) return;
-    edit::Session& session = *loaded_->session;
-    std::shared_ptr<bool> alive = alive_;
-    const auto run = [this, alive, change](Ui& u) {
-        if (!*alive) return;
-        edit::Session& s = *loaded_->session;
-        change(s);
-        std::string error;
-        bool switched = false;
-        const bool ok = s.Save(error, switched);
-        loaded_->stale = true;
-        Saved(ok, switched, error);
-        u.Repaint();
-    };
-    if (session.IsCopy() || session.HasChanges()) {
-        run(ui);
-        return;
-    }
-    // The first change: the player's own version is about to be made.
-    const std::string title = loaded_->doc.GetSettings().title.empty() ? UiText("this filter") : loaded_->doc.GetSettings().title;
-    overlay::DialogSpec spec;
-    spec.title = "Make your own version?";
-    spec.message = UiFormat("Your changes go into your own copy of the filter, \"{0} (my version)\". The game switches to it now "
-                            "and keeps your filter level.\n\n{1}'s updates still come through: the editor puts your changes on top "
-                            "of each new version.",
-                            {title, loaded_->Author()});
-    spec.confirm = "Make my version";
-    spec.confirmIsDefault = true;
-    ui.ShowDialog(spec, [this, alive, run, &ui](bool confirmed) {
-        if (!*alive) return;
-        if (confirmed) {
-            run(ui);
-            return;
-        }
-        SyncControls();  // the control goes back to what it was
-        status_.text = UiText("Nothing changed.");
-        ui.Repaint();
-    });
+    if (!editable_ && !own_) return;
+    CommitChange(
+        ui, loaded_, alive_, std::move(change),
+        [this](Ui&, bool ok, bool switched, const std::string& error) { Saved(ok, switched, error); },
+        [this](Ui&) {
+            SyncControls();  // the control goes back to what it was
+            status_.text = UiText("Nothing changed.");
+        });
 }
 
 void RuleView::Saved(bool ok, bool switched, const std::string& error) {
@@ -358,7 +375,7 @@ auto RuleView::Title() const -> std::string {
     return id_.empty() ? UiFormat("Rule {0}", {std::to_string(rule_ + 1)}) : UiFormat("Rule {0}", {id_});
 }
 
-auto RuleView::InitialFocus() -> Widget* { return editable_ ? static_cast<Widget*>(&on_) : &lines_; }
+auto RuleView::InitialFocus() -> Widget* { return editable_ || own_ ? static_cast<Widget*>(&on_) : &lines_; }
 
 void RuleView::Layout(const LayoutContext& c) {
     overlay::Measurer& m = c.measure;
@@ -367,12 +384,12 @@ void RuleView::Layout(const LayoutContext& c) {
     const int gap = m.S(8);
     const int head = std::max(m.S(36), m.LineHeight(Font::Title) + m.S(12));
     badge_.box = overlay::Box{area.left, area.top, area.left + m.S(130), area.top + head};
-    badge_.color = editable_ && loaded_->session->IsOff(id_) ? theme.dim : ActionColor(summary_.action, theme);
+    badge_.color = (editable_ || own_) && loaded_->session->IsOff(id_) ? theme.dim : ActionColor(summary_.action, theme);
     what_.box = overlay::Box{badge_.box.right + m.S(12), area.top, area.right, area.top + head};
     const int buttonHeight = std::max(m.S(30), m.LineHeight(Font::Body) + m.S(10));
     back_.box = overlay::Box{area.left, area.bottom - buttonHeight, area.left + m.S(120), area.bottom};
 
-    const bool side = editable_ || !note_.text.empty();
+    const bool side = editable_ || own_ || !note_.text.empty();
     const int split = side ? area.left + area.Width() * 55 / 100 : area.right + gap;
     lines_.box = overlay::Box{area.left, badge_.box.bottom + gap, split - gap, back_.box.top - gap};
     lines_.rowHeight = std::max(m.S(26), m.LineHeight(Font::Bold) + m.S(8));
@@ -381,6 +398,21 @@ void RuleView::Layout(const LayoutContext& c) {
     panel_.box = overlay::Box{split, badge_.box.bottom + gap, area.right, area.bottom};
     note_.box = panel_.box.Inflated(-m.S(16));
     note_.color = theme.dim;
+    if (own_) {
+        const int left = panel_.box.left + m.S(16);
+        const int right = panel_.box.right - m.S(16);
+        int y = panel_.box.top + m.S(8) + m.LineHeight(Font::Bold) + m.S(12);
+        const int rowH = std::max(m.S(28), m.LineHeight(Font::Body) + m.S(8));
+        on_.box = overlay::Box{left, y, right, y + rowH};
+        y += rowH + gap;
+        change_.box = overlay::Box{left, y, right, y + buttonHeight};
+        y += buttonHeight + gap;
+        delete_.box = overlay::Box{left, y, right, y + buttonHeight};
+        const int statusH = m.LineHeight(Font::Small) * 2 + m.S(4);
+        status_.box = overlay::Box{left, panel_.box.bottom - m.S(12) - statusH, right, panel_.box.bottom - m.S(12)};
+        status_.color = theme.dim;
+        return;
+    }
     if (!editable_) return;
     const int left = panel_.box.left + m.S(16);
     const int right = panel_.box.right - m.S(16);
@@ -431,7 +463,7 @@ void RuleView::Layout(const LayoutContext& c) {
 void RuleView::FocusList(std::vector<Widget*>& out) {
     out = {&badge_, &what_, &lines_, &panel_, &note_, &on_, &actionLabel_, &hide_, &show_, &neither_, &levelsLabel_};
     for (overlay::Checkbox& box : levels_) out.push_back(&box);
-    for (Widget* w : std::initializer_list<Widget*>{&itemsLabel_, &items_, &reset_, &status_, &back_}) out.push_back(w);
+    for (Widget* w : std::initializer_list<Widget*>{&itemsLabel_, &items_, &reset_, &change_, &delete_, &status_, &back_}) out.push_back(w);
 }
 
 void RuleView::Paint(Canvas& canvas) {

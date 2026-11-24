@@ -32,6 +32,7 @@
 #include "overlay.hpp"
 #include "debug_log.hpp"
 #include "browse_view.hpp"
+#include "rule_draft.h"
 #include "demo_view.hpp"
 #include "source.h"
 #include "session.h"
@@ -239,7 +240,11 @@ auto RuleLabel(int ruleNumber, const std::string& title) -> std::string { return
 // ---------------------------------------------------------------------------
 //  The key
 // ---------------------------------------------------------------------------
-void PrintItem(const Bridge::HoveredItem& item) {
+// The four chat lines about a hovered item (lfeditor-hoverchat); the log always gets its line.
+std::atomic<bool> HoverChat{false};
+
+// Logs the hovered item (and prints it in chat when HoverChat is on); returns its stats when it is identified.
+auto PrintItem(const Bridge::HoveredItem& item, bool chat) -> std::vector<esrfe::ui::ItemStat> {
     const std::string name = Text(item.name);
     const std::string code = Text(item.code);
 
@@ -315,7 +320,7 @@ void PrintItem(const Bridge::HoveredItem& item) {
         if (more > 0) line3 += " +" + Number(more) + " more";
     }
 
-    if (Lease && Lease->printChat != nullptr) {
+    if (chat && Lease && Lease->printChat != nullptr) {
         (void)Lease->printChat(line1.c_str());
         (void)Lease->printChat(line2.c_str());
         (void)Lease->printChat(line3.c_str());
@@ -336,7 +341,15 @@ void PrintItem(const Bridge::HoveredItem& item) {
     LogInfo(log);
     LogInfo("Loot Filter Editor: hovered item stats (stat,param=tooltip value): " + std::string(ResultName(statsResult)) + " count="
         + Number(statCount) + " [" + statText + "]");
+    std::vector<esrfe::ui::ItemStat> out;
+    if (item.identified != 0)
+        for (const Bridge::ItemStat& stat : stats)
+            out.push_back(esrfe::ui::ItemStat{static_cast<int>(stat.stat), static_cast<int>(stat.param), static_cast<int>(stat.value)});
+    return out;
 }
+
+// The editor, on a new rule for the item: its base, tier and rarity chosen, its stats ticked (defined with the window).
+void OpenRuleForItem(const std::string& code, int quality, std::vector<esrfe::ui::ItemStat> stats);
 
 auto __cdecl OnEditItem(const D2RL::PluginContext*, const D2RL::Input::ActionEvent* event, void*) noexcept -> D2RL::Input::ActionResult {
     if (!D2RL::Input::HasActionEventField(event, D2RL::Input::ActionEventRequiredSize)
@@ -355,10 +368,19 @@ auto __cdecl OnEditItem(const D2RL::PluginContext*, const D2RL::Input::ActionEve
             LogWarn(std::string("Loot Filter Editor: getHoveredItem answered ") + ResultName(result) + " (" + Number(static_cast<uint32_t>(result)) + ").");
             return D2RL::Input::ActionResult::Handled;
         }
-        PrintItem(item);
+        std::vector<esrfe::ui::ItemStat> stats = PrintItem(item, HoverChat.load());
+        OpenRuleForItem(Text(item.code), static_cast<int>(item.quality), std::move(stats));
     } catch (...) {
     }
     return D2RL::Input::ActionResult::Handled;
+}
+
+auto __cdecl HoverChatCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+    if (command == nullptr) return D2RL::ConsoleCommandResult::Failed;
+    const bool on = !HoverChat.load();
+    HoverChat.store(on);
+    Console(std::string("lfeditor-hoverchat: the edit-item key ") + (on ? "also prints the item in chat." : "no longer prints the item in chat."));
+    return D2RL::ConsoleCommandResult::Handled;
 }
 
 // ---------------------------------------------------------------------------
@@ -542,6 +564,19 @@ void LoadGameData() noexcept {
             if (auto view = Browse.lock()) view->Refresh(ui);
         });
     }
+}
+
+void OpenRuleForItem(const std::string& code, int quality, std::vector<esrfe::ui::ItemStat> stats) {
+    if (!Window) {
+        LogWarn("Loot Filter Editor: the window is unavailable (see the lines above); the edit-item key does nothing.");
+        return;
+    }
+    Window->Open();
+    Window->PostToUi([code, quality, stats = std::move(stats)](ov::Ui& ui) {
+        if (auto view = Browse.lock()) {
+            view->StartRule(ui, [code, quality, stats](const gamedata::GameData& game) { return esrfe::ui::FromItem(code, quality, stats, game); });
+        }
+    });
 }
 
 class PluginSource final : public esrfe::ui::Source {
@@ -876,7 +911,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.4.0",
+    .version     = "0.5.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,
@@ -903,6 +938,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
         (void)Context->RegisterConsoleCommand("lfeditor-open", &OpenCommand, "Loot filter editor: open or close the window.");
         (void)Context->RegisterConsoleCommand("lfeditor-gamefilter", &GameFilterCommand, "Loot filter editor: open the game's own loot filter screen.");
         (void)Context->RegisterConsoleCommand("lfeditor-demo", &DemoCommand, "Loot filter editor: open the controls demo.");
+        (void)Context->RegisterConsoleCommand("lfeditor-hoverchat", &HoverChatCommand, "Loot filter editor: the edit-item key also prints the item in chat (on/off).");
         (void)Context->RegisterConsoleCommand("lfeditor-selftest", &SelfTestCommand, "Loot filter editor: read the active filter and the mod's data.");
         // Without both services we stay inert but let the game run.
         if (!QueryServices()) return true;

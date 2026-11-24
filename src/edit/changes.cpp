@@ -165,6 +165,9 @@ auto Parse(std::string_view text, ChangeSet& out, std::string& error) -> bool {
             rule.id = Str(o.Find("id"));
             rule.after = Str(o.Find("after"));
             rule.section = Str(o.Find("section"));
+            rule.place = Str(o.Find("place"));
+            if (const Value* keep = o.Find("keepShown")) rule.keepShown = keep->IsBool() && keep->boolean;
+            if (const Value* off = o.Find("off")) rule.off = off->IsBool() && off->boolean;
             if (const Value* r = o.Find("rule")) rule.rule = *r;
             if (!rule.id.empty() && rule.rule.IsObject()) out.own.push_back(std::move(rule));
         }
@@ -218,6 +221,9 @@ auto Render(const ChangeSet& c) -> std::string {
         const OwnRule& o = c.own[i];
         Value entry = Value::Object();
         entry.Set("id", Value::String(o.id));
+        if (!o.place.empty()) entry.Set("place", Value::String(o.place));
+        if (o.keepShown) entry.Set("keepShown", Value::Bool(true));
+        if (o.off) entry.Set("off", Value::Bool(true));
         entry.Set("after", Value::String(o.after));
         entry.Set("section", Value::String(o.section));
         entry.Set("rule", o.rule);
@@ -371,37 +377,59 @@ auto Merge(std::string_view authorText, const ChangeSet& changes, const MergeOpt
     }
 
     // The player's own rules, where they belong (before off rules go, so a rule can follow one).
+    // A part made when missing: "My Rules" first in the file, "My Highlights" last.
+    const auto part = [&doc, &result](const std::string& name, bool first, const char* about) -> int {
+        int heading = doc.FindHeading(name);
+        if (heading >= 0) return heading;
+        const document::Status status = doc.AddHeading(document::Level::Part, first ? document::Position::Begin() : document::Position::End(), name, about);
+        if (!status) {
+            result.error = "the " + name + " part: " + status.error;
+            return -1;
+        }
+        return doc.FindHeading(name);
+    };
+    const char* topAbout = "Your own rules. They come first, so what they hide is hidden and what they show is never hidden.";
+    const char* endAbout = "Your own highlights. They come last, so their colours, beam and name are the ones you see.";
     for (const OwnRule& own : changes.own) {
+        if (own.off && !options.keepOff) continue;
         document::Position where = document::Position::End();
-        bool placed = false;
-        if (!own.after.empty()) {
-            const int after = doc.FindRule(own.after);
-            if (after >= 0 && after < doc.ActiveCount()) {
-                where = document::Position::After(after);
-                placed = true;
-            }
-        }
-        if (!placed && !own.section.empty()) {
-            std::string part, section;
-            SplitPlace(own.section, part, section);
-            const int heading = doc.FindHeading(part, section);
-            if (heading >= 0) {
-                where = own.after.empty() ? document::Position::StartOf(heading) : document::Position::EndOf(heading);
-                placed = true;
-            }
-        }
-        if (!placed) {
-            int heading = doc.FindHeading(options.ownPart);
-            if (heading < 0) {
-                const document::Status status = doc.AddHeading(document::Level::Part, document::Position::End(), options.ownPart,
-                                                               "Your own rules. The editor puts them here when the place they had is gone.");
-                if (!status) return fail("the " + options.ownPart + " part", status);
-                heading = doc.FindHeading(options.ownPart);
-            }
+        if (own.place == "top" || own.place == "end") {
+            const bool top = own.place == "top";
+            const int heading = part(top ? options.ownPart : options.highlightPart, top, top ? topAbout : endAbout);
+            if (heading < 0) return result;
             where = document::Position::EndOf(heading);
-            if (!own.section.empty() || !own.after.empty())
-                result.notes.push_back(own.id + ": its place (" + (own.after.empty() ? own.section : "after " + own.after) +
-                                       ") is gone; it is in " + options.ownPart + " now");
+            if (!top && own.keepShown && options.companions) {
+                const int first = part(options.ownPart, true, topAbout);
+                if (first < 0) return result;
+                const document::Status status = doc.InsertRule(document::Position::EndOf(first), ShownCompanion(own));
+                if (!status) return fail("rule " + own.id, status);
+            }
+        } else {
+            bool placed = false;
+            if (!own.after.empty()) {
+                const int after = doc.FindRule(own.after);
+                if (after >= 0 && after < doc.ActiveCount()) {
+                    where = document::Position::After(after);
+                    placed = true;
+                }
+            }
+            if (!placed && !own.section.empty()) {
+                std::string partName, section;
+                SplitPlace(own.section, partName, section);
+                const int heading = doc.FindHeading(partName, section);
+                if (heading >= 0) {
+                    where = own.after.empty() ? document::Position::StartOf(heading) : document::Position::EndOf(heading);
+                    placed = true;
+                }
+            }
+            if (!placed) {
+                const int heading = part(options.ownPart, true, topAbout);
+                if (heading < 0) return result;
+                where = document::Position::EndOf(heading);
+                if (!own.section.empty() || !own.after.empty())
+                    result.notes.push_back(own.id + ": its place (" + (own.after.empty() ? own.section : "after " + own.after) +
+                                           ") is gone; it is in " + options.ownPart + " now");
+            }
         }
         const document::Status status = doc.InsertRule(where, own.rule);
         if (!status) return fail("rule " + own.id, status);
@@ -426,6 +454,23 @@ auto Merge(std::string_view authorText, const ChangeSet& changes, const MergeOpt
     result.text = doc.Text();
     result.ok = true;
     return result;
+}
+
+auto ShownCompanion(const OwnRule& own) -> Value {
+    static const char* const kActions[] = {"hide", "show", "hideIfOtherConditionsFail", "replaceName", "namePrefix", "nameSuffix",
+                                           "chatMessage", "chatMessageWhenHidden", "sound", "soundVolume", "labelBackground",
+                                           "labelBorder", "notify", "icon", "droplight", "useStyle", "comment"};
+    Value rule = Value::Object();
+    rule.Set("comment", Value::String(own.id + " | keeps the items of your highlight " + own.id + " shown | show"));
+    if (own.rule.IsObject()) {
+        for (const document::Member& m : own.rule.object) {
+            bool action = false;
+            for (const char* key : kActions) action = action || m.key == key;
+            if (!action) rule.Set(m.key, m.value);
+        }
+    }
+    rule.Set("show", Value::Bool(true));
+    return rule;
 }
 
 void Resolve(ChangeSet& changes, const Conflict& conflict, bool keepMine) {

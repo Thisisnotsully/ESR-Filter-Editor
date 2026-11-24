@@ -50,9 +50,19 @@ struct RuleChange {
 
 struct OwnRule {
     std::string id;       // U###
+    // Where it goes:
+    //   "top": the "My Rules" part above every author rule, so the player's hide and always-show win (the first
+    //          hide stops an item; a show protects it from every later hide);
+    //   "end": the "My Highlights" part below every author rule, so the player's colours, beam, icon and name win
+    //          (a later rule's replace an earlier one's); with `keepShown` a copy that only shows goes to the top
+    //          as well, so no author rule hides what the player highlights;
+    //   "":    after the rule `after`, else in `section` (a change kept from a rule the author deleted).
+    std::string place;
+    bool keepShown = false;
     std::string after;    // the rule it follows (an R### or U### id), "" for the start of its section
     std::string section;  // "Part > Section" or "Part" or "", where it goes when `after` is gone
     Value rule;           // the whole rule, its title "U### | ... | ..."
+    bool off = false;     // switched off: left out of the game's copy
 };
 
 struct ChangeSet {
@@ -119,7 +129,9 @@ struct MergeResult {
 
 struct MergeOptions {
     std::string titleSuffix = " (my version)";
-    std::string ownPart = "My Rules";  // where own rules go when their place is gone
+    std::string ownPart = "My Rules";  // where own rules go when their place is gone, and "top" ones
+    std::string highlightPart = "My Highlights";  // "end" own rules
+    bool companions = true;  // the show-only copies of keepShown rules (the editor's own view leaves them out)
     bool keepOff = false;   // rules switched off stay (what the editor shows); the game's copy leaves them out
     bool findConflicts = true;
 };
@@ -134,6 +146,9 @@ auto Merge(std::string_view authorText, const ChangeSet& changes, const MergeOpt
 void Resolve(ChangeSet& changes, const Conflict& conflict, bool keepMine);
 
 // Copies that still have to be brought up to date are done by UpdateCopies (session.h).
+
+// The rule that keeps an "end" own rule's items shown: its conditions, "show": true, at the top.
+auto ShownCompanion(const OwnRule& own) -> Value;
 
 // ---- the game's selection ----
 

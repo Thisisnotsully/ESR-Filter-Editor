@@ -6,27 +6,20 @@ There is no window yet.
 
 ## What it does
 
-You bind one key in the Controls menu.
-Point at a ground item with the mouse, or target it with a controller, and press the key.
-The plugin asks the loot filter plugin about that item.
-Then it prints three lines in the chat window:
+An in-game loot filter editor for Eastern Sun Resurrected, in a window over the game (mouse, keyboard and controller).
 
-1. The item: name, code, quality, tier, item level, sockets, ethereal, and "not in Chronicle" or "in Chronicle" (needs the Chronicle Tracker).
-2. Whether the filter shows or hides it, and which rule hides it.
-3. The rules that match it (the first three, with a "+N more" if there are more).
+- **Browse** the loaded filter: its parts and sections, every rule in plain words, a search, the filter levels.
+- **Change** the author's rules: on or off, hide / always show, filter levels, single items. The changes go into the
+  player's own version of the filter, which keeps getting the author's updates.
+- **Add** rules in seven short steps: what happens (hide, always show, highlight), which items, tier, rarity, stats
+  (only the bonuses the items can roll), filter levels, a last check.
+- **The edit-item key**: point at a ground item (mouse or controller target) and press it. The editor opens on a new
+  rule for that item: its base, tier and rarity chosen, and for Superior and Magic items its bonuses ticked at their
+  values. Nothing under the cursor: nothing happens. `lfeditor-hoverchat` also prints the item in chat (for checking).
+- The pause menu's **Loot Filter** button opens the editor; its **Game loot filter settings** button opens the game's own
+  screen.
 
-Example:
-
-    Filter editor: Colossus Blade (7gd) - Unique - Elite - ilvl 85 - ethereal
-    Shown
-    Rules: R4 Uniques; R12 Ethereal bases; R30 Keep all weapons
-
-If nothing is under the cursor, nothing happens.
-Everything is also written to the plugin log, with full rule titles.
-
-The plugin only reads.
-It never changes the filter or the game.
-It hooks nothing.
+The author's filter is never written; see docs/ARCHITECTURE.md for the files the editor keeps.
 
 ## What you need
 
@@ -74,8 +67,8 @@ That loot filter DLL must be the build with the editor bridge.
 
 ## Test checklist
 
-- [ ] Mouse hover: point at a ground item, press the key. Three lines appear in chat.
-- [ ] Controller target: target an item with the controller, press the key. Same three lines.
+- [ ] Mouse hover: point at a ground item, press the key. The editor opens on a new rule for it (Milestone 4). With `lfeditor-hoverchat` on, three lines also appear in chat.
+- [ ] Controller target: target an item with the controller, press the key. Same.
 - [ ] Show Hidden Items off: items the filter hides cannot be pointed at, so nothing happens.
 - [ ] Show Hidden Items on: turn it on with the loot filter key. Point at a hidden item. Line 2 says "Hidden by R123 | ..." with the rule's own id from its title (a rule without an id in its title shows as "rule #N", its place in the file), or "Hidden: no rule matched...".
 - [ ] Item labels up: hold Alt (or turn on the game's "always show items") and point at an item's name label, not the item itself. Note whether the key still works. The loot filter's hover hook may only see the item, not its label; this test tells us.
@@ -158,3 +151,20 @@ Build and install with `build-and-install.bat` (game and launcher closed). With 
 - [ ] Sounds and minimap icons still work with your version.
 - [ ] Choose Sully's original filter in the launcher and open the editor: your changes are still there; the next change switches back to your version.
 - [ ] Update check (I can make the test file): put an older or newer Sully filter in `QoL-Filter\`, start the game: the log says your copy is up to date. If a rule you changed was changed by Sully too, opening the editor asks; Escape keeps yours.
+
+## Milestone 4: adding rules (test build)
+
+Build and install with `build-and-install.bat` (game and launcher closed).
+
+- [ ] **+ Add a rule** in the editor's top bar opens the steps. The step chips along the top jump between steps; LB / RB go back and forth with a controller.
+- [ ] 1 What happens: Hide them / Always show them / Highlight them. Highlight shows the colours, the light beam and the chat line.
+- [ ] 2 Items: a group on the left, its items on the right (tick with a click, Enter or A). The search finds items by name across every group. "Chosen (N)" lists what is ticked.
+- [ ] 3 Tier: only Normal / Exceptional / Elite the items have; Mythical bases: with, without, only (only when a Mythical is ticked). The step is skipped when there is nothing to choose.
+- [ ] 4 Rarity: only the rarities the items come in.
+- [ ] 5 Stats: with only Superior (or only Magic) ticked, the bonuses those items can roll; tick one, set "At least". With both, or neither, it says what to choose.
+- [ ] 6 Levels, 7 the rule in words. **Add rule**: back to the list, where the rule shows as yours ("U001").
+- [ ] In game: a hide rule hides even what Sully's filter always shows; an always-show rule keeps an item Sully hides; a highlight keeps its colour (it is last in the filter) and is never hidden.
+- [ ] A rule with stats leaves unidentified items alone.
+- [ ] Your rule's card: **Rule is on**, **Change this rule** (the steps again, filled in), **Delete this rule** (asks; Cancel is first).
+- [ ] The edit-item key on a ground item: the steps open with the item chosen. On a Superior item with a bonus, the bonus is ticked at its value. On an unidentified item, no stats. Nothing under the cursor: nothing happens. Right after the game starts (data still loading) it still opens, a moment later.
+- [ ] Your version's file: a "My Rules" part first (your hides and shows, and a show-only copy of each highlight) and a "My Highlights" part last.

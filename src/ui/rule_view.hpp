@@ -50,6 +50,9 @@ public:
     auto Items() -> overlay::ListView& { return items_; }
     [[nodiscard]] auto ItemEntries() const -> const std::vector<Entry>& { return entries_; }
     auto ResetButton() -> overlay::Button& { return reset_; }
+    auto ChangeButton() -> overlay::Button& { return change_; }
+    auto DeleteButton() -> overlay::Button& { return delete_; }
+    [[nodiscard]] auto Own() const -> bool { return own_; }
     void ToggleItem(int index, Ui& ui);
 
 private:
@@ -68,6 +71,7 @@ private:
     int rule_ = 0;
     std::string id_;
     bool editable_ = false;     // an author's rule and a session to save it
+    bool own_ = false;          // one of the player's own rules (U###)
     bool actionShown_ = false;  // the rule hides or shows (the action chips apply)
     RuleSummary summary_;
     std::vector<Line> content_;
@@ -86,6 +90,8 @@ private:
     overlay::Label itemsLabel_;
     overlay::ListView items_;
     overlay::Button reset_;
+    overlay::Button change_;  // own rules: the add-rule steps again
+    overlay::Button delete_;  // own rules
     overlay::Label status_;
     overlay::Label note_;  // why nothing can be changed here
     overlay::Button back_;

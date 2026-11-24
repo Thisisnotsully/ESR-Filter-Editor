@@ -134,7 +134,13 @@ int main(int argc, char** argv) {
         // U001 sits where R303 was (R303 is off and gone).
         const int u1 = copy.FindRule("U001");
         const int r270 = copy.FindRule("R302");
-        CHECK(u1 >= 0 && copy.Rules()[static_cast<std::size_t>(u1)].section == base.Rules()[static_cast<std::size_t>(base.FindRule("R303"))].section);
+        {
+            const auto sectionName = [](const document::Document& d, int rule) -> std::string {
+                const int h = rule < 0 ? -1 : d.Rules()[static_cast<std::size_t>(rule)].section;
+                return h < 0 ? std::string{} : d.Headings()[static_cast<std::size_t>(h)].name;
+            };
+            CHECK(u1 >= 0 && sectionName(copy, u1) == sectionName(base, base.FindRule("R303")));
+        }
         (void)r270;
     }
 
@@ -215,6 +221,57 @@ int main(int argc, char** argv) {
         CHECK(v.Find("chatNotifications") != nullptr && !v.Find("chatNotifications")->boolean);
         CHECK(SwitchSelection("", "a", "user:x.json", out) && out.find("user:x.json") != std::string::npos);
         CHECK(!SwitchSelection("[1]", "a", "b", out));
+    }
+
+    // ---- own rules: "top" ones beat the author's, "end" highlights keep their colours and are never hidden ----
+    {
+        ChangeSet own;
+        own.base = "repo:QoL-Filter/Sullys-QoL-Filter.json";
+        OwnRule hide;
+        hide.id = "U001";
+        hide.place = "top";
+        hide.rule = Value::Object({{"comment", Value::String("U001 | superior caps | hide")}, {"itemCodes", Value::Array({Value::String("cap")})},
+                                   {"quality", Value::String("superior")}, {"hide", Value::Bool(true)}});
+        own.own.push_back(hide);
+        OwnRule mark;
+        mark.id = "U002";
+        mark.place = "end";
+        mark.keepShown = true;
+        mark.rule = Value::Object({{"comment", Value::String("U002 | superior light crossbows | highlight")},
+                                   {"itemCodes", Value::Array({Value::String("lxb")})}, {"quality", Value::String("superior")},
+                                   {"labelBorder", Value::Object({{"color", Value::Array({Value::Integer(255), Value::Integer(0), Value::Integer(0), Value::Integer(255)})},
+                                                                  {"width", Value::Integer(2)}})}});
+        own.own.push_back(mark);
+        MergeResult m2 = Merge(author, own);
+        CHECK(m2.ok);
+        document::Document merged;
+        CHECK(Read(m2.text, merged));
+        CHECK(merged.FindHeading("My Rules") == 0);
+        CHECK(merged.FindHeading("My Highlights") == static_cast<int>(merged.Headings().size()) - 1);
+        CHECK(merged.FindRule("U001") >= 0 && merged.FindRule("U001") < 2);
+        // U002's show-only copy first, the highlight itself last.
+        const int companion = merged.FindRule("U002");
+        CHECK(companion >= 0 && companion < 2 && merged.Rules()[static_cast<std::size_t>(companion)].value.Find("show") != nullptr);
+        CHECK(merged.Rules()[static_cast<std::size_t>(merged.ActiveCount() - 1)].value.Find("labelBorder") != nullptr);
+        // The editor's own view has no copy.
+        MergeOptions view;
+        view.companions = false;
+        document::Document seen;
+        CHECK(Read(Merge(author, own, view).text, seen));
+        CHECK(seen.ActiveCount() == base.ActiveCount() + 2);
+        if (argc > 3) {  // for the loot filter's engine (tests/edit/own-rules.txt)
+            std::ofstream out(argv[3], std::ios::binary);
+            out << m2.text;
+        }
+        // Off: left out of the game's copy, kept in the editor's view.
+        own.own[0].off = true;
+        CHECK(Read(Merge(author, own).text, merged));
+        CHECK(merged.FindRule("U001") < 0);
+        // The file keeps all of it.
+        ChangeSet back;
+        std::string why;
+        CHECK(Parse(Render(own), back, why));
+        CHECK(back.own.size() == 2 && back.own[0].off && back.own[1].place == "end" && back.own[1].keepShown);
     }
 
     // ---- a session on real folders ----

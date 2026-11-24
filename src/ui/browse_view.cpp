@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <set>
 
+#include "add_rule_view.hpp"
+#include "rule_draft.h"
 #include "rule_view.hpp"
 #include "text_fold.hpp"
 #include "ui_text.hpp"
@@ -147,6 +149,9 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
 
     gameSettings_.label = "Game loot filter settings";
     gameSettings_.onClick = [this](Ui&) { source_->OpenGameSettings(); };
+    addRule_.label = "+ Add a rule";
+    addRule_.style = overlay::Button::Style::Primary;
+    addRule_.onClick = [this](Ui& ui) { StartRule(ui, nullptr); };
 
     info_.translate = false;
     info_.font = Font::Small;
@@ -267,7 +272,11 @@ void BrowseView::Apply(const FilterInfo& info, Ui& ui, bool force) {
     }
     empty_ = false;
     Rebuild();
-    if (loaded_->session != nullptr && !loaded_->session->Conflicts().empty()) AskConflicts(ui);
+    if (loaded_->session != nullptr && !loaded_->session->Conflicts().empty()) {
+        AskConflicts(ui);
+        return;
+    }
+    if (pendingRule_) StartRule(ui, pendingDraft_);
 }
 
 void BrowseView::Rebuild() {
@@ -511,6 +520,56 @@ void BrowseView::AskConflicts(Ui& ui) {
     });
 }
 
+void CommitChange(Ui& ui, const std::shared_ptr<Loaded>& loaded, const std::shared_ptr<bool>& alive,
+                  std::function<void(edit::Session&)> change,
+                  std::function<void(Ui&, bool, bool, const std::string&)> done, std::function<void(Ui&)> cancelled) {
+    if (!loaded || loaded->session == nullptr) return;
+    edit::Session& session = *loaded->session;
+    const auto run = [loaded, alive, change, done](Ui& u) {
+        if (!*alive) return;
+        edit::Session& s = *loaded->session;
+        change(s);
+        std::string error;
+        bool switched = false;
+        const bool ok = s.Save(error, switched);
+        loaded->stale = true;
+        if (done) done(u, ok, switched, error);
+        u.Repaint();
+    };
+    if (session.IsCopy() || session.HasChanges()) {
+        run(ui);
+        return;
+    }
+    // The first change: the player's own version is about to be made.
+    const std::string title = loaded->doc.GetSettings().title.empty() ? UiText("this filter") : loaded->doc.GetSettings().title;
+    overlay::DialogSpec spec;
+    spec.title = "Make your own version?";
+    spec.message = UiFormat("Your changes go into your own copy of the filter, \"{0} (my version)\". The game switches to it now "
+                            "and keeps your filter level.\n\n{1}'s updates still come through: the editor puts your changes on top "
+                            "of each new version.",
+                            {title, loaded->Author()});
+    spec.confirm = "Make my version";
+    spec.confirmIsDefault = true;
+    ui.ShowDialog(spec, [alive, run, cancelled, &ui](bool confirmed) {
+        if (!*alive) return;
+        if (confirmed) run(ui);
+        else if (cancelled) cancelled(ui);
+        ui.Repaint();
+    });
+}
+
+void BrowseView::StartRule(Ui& ui, DraftMaker makeDraft) {
+    if (!loaded_ || !loaded_->parsed || loaded_->session == nullptr || loaded_->game == nullptr) {
+        pendingRule_ = true;  // once the filter is read (Apply)
+        pendingDraft_ = std::move(makeDraft);
+        return;
+    }
+    pendingRule_ = false;
+    pendingDraft_ = nullptr;
+    RuleDraft draft = makeDraft ? makeDraft(*loaded_->game) : RuleDraft{};
+    ui.PushView(std::make_shared<AddRuleView>(loaded_, std::move(draft), std::string{}));
+}
+
 void BrowseView::OpenRule(int shownIndex, Ui& ui) {
     if (!loaded_ || shownIndex < 0 || shownIndex >= static_cast<int>(shown_.size())) return;
     ui.PushView(std::make_shared<RuleView>(loaded_, shown_[static_cast<std::size_t>(shownIndex)]));
@@ -529,7 +588,10 @@ void BrowseView::Layout(const LayoutContext& c) {
     // The top bar: search, level, the game's settings.
     const int settingsWidth = m.TextWidth(UiText(gameSettings_.label), Font::Body) + m.S(28);
     gameSettings_.box = Box{area.right - settingsWidth, area.top, area.right, area.top + barHeight};
-    int right = gameSettings_.box.left - gap;
+    const int addWidth = m.TextWidth(UiText(addRule_.label), Font::Body) + m.S(28);
+    addRule_.box = Box{gameSettings_.box.left - gap - addWidth, area.top, gameSettings_.box.left - gap, area.top + barHeight};
+    addRule_.visible = !empty_ && loaded_ && loaded_->session != nullptr && loaded_->game != nullptr;
+    int right = (addRule_.visible ? addRule_.box.left : gameSettings_.box.left) - gap;
     if (level_.visible) {
         int widest = m.S(120);
         for (const std::string& option : level_.options) widest = std::max(widest, m.TextWidth(option, Font::Body) + m.S(40));
@@ -589,7 +651,7 @@ void BrowseView::Layout(const LayoutContext& c) {
 }
 
 void BrowseView::FocusList(std::vector<Widget*>& out) {
-    out = {&search_, &levelLabel_, &level_, &gameSettings_, &info_, &sectionList_, &count_, &ruleList_, &message_};
+    out = {&search_, &levelLabel_, &level_, &addRule_, &gameSettings_, &info_, &sectionList_, &count_, &ruleList_, &message_};
 }
 
 void BrowseView::Paint(Canvas&) {}
