@@ -39,7 +39,7 @@
 #include "game_thread.hpp"
 #include "input_block.hpp"
 #include "ui_text.hpp"
-#include "sound_player.h"
+#include "preview_sound.h"
 
 #include <algorithm>
 #include <cctype>

@@ -44,7 +44,7 @@ add_subdirectory(src/ui)
 set(target d2rl-sully-loot-filter-editor)
 add_library(${target} SHARED
     src/plugin.cpp
-    src/sound/sound_player.cpp
+    src/sound/preview_sound.cpp
     src/plugin.rc)
 
 target_include_directories(${target} PRIVATE "${LOOT_FILTER_SRC_DIR}" src/sound third_party/miniaudio)
