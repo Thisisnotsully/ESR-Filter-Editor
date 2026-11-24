@@ -1,5 +1,7 @@
 #include "session.h"
 
+#include "syntax.h"
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -108,6 +110,67 @@ auto StemOfId(const std::string& id) -> std::string {
     if (file.size() > 5 && file.ends_with(".json")) file.resize(file.size() - 5);
     if (file.ends_with(kCopySuffix)) file.resize(file.size() - kCopySuffix.size());
     return file;
+}
+
+auto ListFilters(const Folders& folders) -> std::vector<FilterChoice> {
+    std::vector<FilterChoice> out;
+    const auto scan = [&out](const fs::path& folder, const std::string& prefix) {
+        std::error_code ec;
+        if (folder.empty() || !fs::is_directory(folder, ec)) return;
+        for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec)) {
+            if (!entry.is_regular_file(ec)) continue;
+            const std::string name = U(entry.path().filename());
+            if (name.size() <= 5 || !name.ends_with(".json") || name == "selection.json" || name.starts_with(".")) continue;
+            std::string text;
+            if (!ReadText(U(entry.path()), text)) continue;
+            document::Syntax syntax;
+            document::Diag diag;
+            if (!document::ParseSyntax(text, syntax, diag)) continue;
+            const document::Value root = document::ToValue(syntax, text, syntax.root);
+            if (!root.IsObject() || root.Find("rules") == nullptr) continue;
+            FilterChoice c;
+            c.id = prefix + name;
+            c.path = U(entry.path());
+            const document::Value* title = root.Find("title");
+            c.title = title != nullptr && title->IsString() && !title->Str().empty() ? title->Str() : name.substr(0, name.size() - 5);
+            c.mine = name.ends_with(std::string(kCopySuffix) + ".json");
+            out.push_back(std::move(c));
+        }
+    };
+    scan(P(folders.shipped), "shipped:");
+    scan(P(folders.user), "user:");
+    std::error_code ec;
+    if (!folders.user.empty() && fs::is_directory(P(folders.user), ec)) {
+        for (const fs::directory_entry& entry : fs::directory_iterator(P(folders.user), ec)) {
+            if (!entry.is_directory(ec) || !fs::exists(entry.path() / ".esr-repo.json", ec)) continue;
+            scan(entry.path(), "repo:" + U(entry.path().filename()) + "/");
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const FilterChoice& a, const FilterChoice& b) { return a.title != b.title ? a.title < b.title : a.id < b.id; });
+    return out;
+}
+
+auto SelectFilter(const Folders& folders, const std::string& id, std::string& error) -> bool {
+    if (folders.user.empty()) {
+        error = "the loot filter's folder is not known yet";
+        return false;
+    }
+    if (PathOfId(id, folders).empty()) {
+        error = "not a filter the loot filter can load: " + id;
+        return false;
+    }
+    const std::string selectionPath = U(P(folders.user) / "selection.json");
+    std::string selection, updated;
+    ReadText(selectionPath, selection);  // none yet: a new one
+    if (!SwitchSelection(selection, "", id, updated)) {
+        error = "selection.json could not be read";
+        return false;
+    }
+    if (!WriteText(selectionPath, updated)) {
+        error = "selection.json could not be written";
+        return false;
+    }
+    return true;
 }
 
 auto ReadText(const std::string& path, std::string& out) -> bool {

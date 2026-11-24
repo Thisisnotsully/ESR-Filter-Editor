@@ -66,6 +66,22 @@ void CommitChange(Ui& ui, const std::shared_ptr<Loaded>& loaded, const std::shar
 
 struct RuleDraft;
 
+// The hovered item as the loot filter answered.
+struct ItemRules {
+    std::string name;           // as the game shows it, colour codes taken out
+    bool hidden = false;        // a rule hides it (it can only be pointed at with Show Hidden Items on)
+    bool hiddenUnmatched = false;  // hidden by the filter's hideUnmatchedItems: no rule matched
+    std::string hiddenBy;       // the hiding rule's id ("R105"), "" when none or it has no id
+    struct Match {
+        std::string id;     // "R164", "U001"; "" when its title has no id
+        std::string title;  // the rule's title, for one without an id
+        int number = 0;     // its place in the game's file (1-based)
+    };
+    std::vector<Match> matched;  // in the filter's order, each id once
+    bool more = false;           // the loot filter listed only the first ones
+};
+
+
 class BrowseView final : public overlay::View {
 public:
     explicit BrowseView(std::shared_ptr<Source> source);
@@ -90,7 +106,9 @@ public:
     // Opens the add-rule steps; from the hover key with the item's draft, made once the mod's data is in. Waits for
     // the filter when it is not read yet.
     using DraftMaker = std::function<RuleDraft(const gamedata::GameData&)>;
-    void StartRule(Ui& ui, DraftMaker makeDraft);
+    // A new rule (the steps), or with `item` (the edit-item key on an item rules matched) what the filter does with it
+    // first. Waits for the filter when it is not read yet.
+    void StartRule(Ui& ui, DraftMaker makeDraft, ItemRules item = {});
 
     // For tests.
     [[nodiscard]] auto Data() const -> const Loaded* { return loaded_.get(); }
@@ -105,7 +123,8 @@ public:
     auto Search() -> overlay::TextBox& { return search_; }
     auto Sections() -> overlay::ListView& { return sectionList_; }
     auto Rules() -> overlay::ListView& { return ruleList_; }
-    auto Levels() -> overlay::Dropdown& { return level_; }
+    auto Filters() -> overlay::Dropdown& { return filter_; }
+    [[nodiscard]] auto FilterChoices() const -> const std::vector<edit::FilterChoice>& { return filters_; }
     auto GameSettings() -> overlay::Button& { return gameSettings_; }
     auto AddRule() -> overlay::Button& { return addRule_; }
     auto Volume() -> overlay::Slider& { return volume_; }
@@ -130,7 +149,9 @@ private:
     void OpenRule(int shownIndex, Ui& ui);
     void AskConflicts(Ui& ui);  // an author's update clashes with the player's changes: one question each
     [[nodiscard]] auto ActiveOnLevel(int rule) const -> bool;
-    [[nodiscard]] auto ChosenLevel() const -> std::int64_t;  // 0: every level
+    void RebuildFilters(const std::string& activeId);  // the filter drop-down from the folders
+    void ChooseFilter(int index, Ui& ui);
+    void WaitForFilter(const std::string& id, std::uint64_t until, Ui& ui);
     void PaintRuleRow(Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState& state);
     void SaveVolume(int volume, Ui& ui);  // the filter's soundVolume, in the player's version
     void PlayTest();                       // a sound of the filter at its volume, as the game plays it
@@ -148,12 +169,16 @@ private:
     overlay::Highlight highlight_;
 
     overlay::TextBox search_;
-    overlay::Label levelLabel_;
-    overlay::Dropdown level_;
+    overlay::Label filterLabel_;
+    overlay::Dropdown filter_;
+    std::vector<edit::FilterChoice> filters_;
+    std::string switching_;    // the filter asked for, until the loot filter has it
+    std::string switchError_;  // the last switch failed: why
     overlay::Button gameSettings_;
     overlay::Button addRule_;
     DraftMaker pendingDraft_;  // the hover key's rule, waiting for the filter
     bool pendingRule_ = false;
+    ItemRules pendingItem_;
     overlay::Label info_;
     overlay::Label volumeLabel_;
     overlay::Slider volume_;

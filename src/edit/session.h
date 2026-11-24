@@ -32,6 +32,19 @@ auto PathOfId(const std::string& id, const Folders& folders) -> std::string;
 // "Sullys-QoL-Filter" from any id; "Sullys-QoL-Filter" also from "user:Sullys-QoL-Filter (my version).json".
 auto StemOfId(const std::string& id) -> std::string;
 
+// A filter the loot filter can load: in <mod>\LootFilters ("shipped:"), the player's folder ("user:"), or a
+// repository folder in it, one with the launcher's .esr-repo.json ("repo:<folder>/").
+struct FilterChoice {
+    std::string id;     // "repo:QoL-Filter/Sullys-QoL-Filter.json"
+    std::string path;   // the file (UTF-8)
+    std::string title;  // its "title", or the file name without .json
+    bool mine = false;  // the player's version of a filter ("... (my version).json")
+};
+// Every one there, by title. Files that are not filters (no "rules") are left out.
+auto ListFilters(const Folders& folders) -> std::vector<FilterChoice>;
+// Makes `id` the loot filter's active filter (selection.json); the loot filter loads it a moment later.
+auto SelectFilter(const Folders& folders, const std::string& id, std::string& error) -> bool;
+
 auto ReadText(const std::string& path, std::string& out) -> bool;
 // Writes through a temporary file and a rename, so the loot filter never reads half a file.
 auto WriteText(const std::string& path, const std::string& text) -> bool;

@@ -1,6 +1,7 @@
 # The editor's views and the logic under them (rule descriptions). No Windows here: builds and is tested on Linux.
 add_library(ui STATIC
     add_rule_view.cpp
+    item_rules_view.cpp
     browse_view.cpp
     rule_draft.cpp
     rule_text.cpp

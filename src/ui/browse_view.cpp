@@ -5,6 +5,7 @@
 #include <set>
 
 #include "add_rule_view.hpp"
+#include "item_rules_view.hpp"
 #include "rule_draft.h"
 #include "rule_view.hpp"
 #include "text_fold.hpp"
@@ -141,14 +142,11 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
         if (!shown_.empty()) ui.Focus(&ruleList_);
     };
 
-    levelLabel_.text = "Level";
-    levelLabel_.font = Font::Small;
-    level_.translate = false;
-    level_.onChange = [this](int, Ui& ui) {
-        Refilter();
-        ruleList_.SetCount(static_cast<int>(shown_.size()));
-        ui.Repaint();
-    };
+    // The filter the game uses: choosing another switches the game to it.
+    filterLabel_.text = "Filter";
+    filterLabel_.font = Font::Small;
+    filter_.translate = false;
+    filter_.onChange = [this](int index, Ui& ui) { ChooseFilter(index, ui); };
 
     gameSettings_.label = "Game loot filter settings";
     gameSettings_.onClick = [this](Ui&) { source_->OpenGameSettings(); };
@@ -248,6 +246,7 @@ void BrowseView::Refresh(Ui& ui, bool force) {
 
 void BrowseView::Apply(const FilterInfo& info, Ui& ui, bool force) {
     std::shared_ptr<const gamedata::GameData> game = source_->Game();
+    if (info.bridge && (force || filters_.empty() || !loaded_ || loaded_->info.filterId != info.filterId)) RebuildFilters(info.filterId);
     if (loaded_ && loaded_->stale && loaded_->session != nullptr) {  // edited on a rule card: the list again
         loaded_->Build(loaded_->session->ViewText());
         Rebuild();
@@ -297,7 +296,7 @@ void BrowseView::Apply(const FilterInfo& info, Ui& ui, bool force) {
         AskConflicts(ui);
         return;
     }
-    if (pendingRule_) StartRule(ui, pendingDraft_);
+    if (pendingRule_) StartRule(ui, pendingDraft_, pendingItem_);
 }
 
 void BrowseView::Rebuild() {
@@ -329,20 +328,6 @@ void BrowseView::Rebuild() {
         if (h == chosenHeading) section_ = static_cast<int>(sections_.size());
         sections_.push_back(std::move(row));
     }
-
-    // The level choices: every level, then the filter's own; the game's level chosen to start with.
-    const std::int64_t chosen = level_.selected > 0 && !loaded_->info.levels.empty() ? ChosenLevel() : loaded_->info.level;
-    level_.options = {UiText("Every level")};
-    const auto& levels = doc.GetSettings().filterLevels;
-    level_.selected = 0;
-    for (const document::FilterLevel& l : levels) {
-        std::string name = PickLanguage(l.name, loaded_->language);
-        if (l.id == loaded_->info.level) name = UiFormat("{0} (in use)", {name});
-        level_.options.push_back(name);
-        if (l.id == chosen) level_.selected = static_cast<int>(level_.options.size()) - 1;
-    }
-    level_.visible = !levels.empty();
-    levelLabel_.visible = level_.visible;
 
     Refilter();
     RebuildRows();
@@ -418,18 +403,66 @@ auto BrowseView::WhatShown(int shownIndex) const -> const std::string& {
     return whatShown_[static_cast<std::size_t>(shownIndex)];
 }
 
-auto BrowseView::ChosenLevel() const -> std::int64_t {
-    if (!loaded_ || level_.selected <= 0) return 0;
-    const auto& levels = loaded_->doc.GetSettings().filterLevels;
-    const std::size_t i = static_cast<std::size_t>(level_.selected - 1);
-    return i < levels.size() ? levels[i].id : 0;
-}
-
 auto BrowseView::ActiveOnLevel(int rule) const -> bool {
-    const std::int64_t level = ChosenLevel();
-    if (level == 0 || !loaded_) return true;
+    // The level the game plays: rules off on it are drawn dim.
+    const std::int64_t level = loaded_ ? loaded_->info.level : 0;
+    if (level == 0) return true;
     const auto& levels = loaded_->rules[static_cast<std::size_t>(rule)].levels;
     return levels.empty() || std::find(levels.begin(), levels.end(), level) != levels.end();
+}
+
+void BrowseView::RebuildFilters(const std::string& activeId) {
+    filters_ = edit::ListFilters(source_->Folders());
+    filter_.options.clear();
+    filter_.selected = -1;
+    for (std::size_t i = 0; i < filters_.size(); ++i) {
+        filter_.options.push_back(filters_[i].title);
+        if (filters_[i].id == activeId) filter_.selected = static_cast<int>(i);
+    }
+    if (filter_.selected < 0 && !activeId.empty()) {  // in use, but not in the folders (a launcher path): listed as it is
+        edit::FilterChoice c;
+        c.id = activeId;
+        c.title = activeId;
+        filters_.insert(filters_.begin(), c);
+        filter_.options.insert(filter_.options.begin(), activeId);
+        filter_.selected = 0;
+    }
+    filter_.visible = !filters_.empty();
+    filterLabel_.visible = filter_.visible;
+}
+
+void BrowseView::ChooseFilter(int index, Ui& ui) {
+    if (index < 0 || index >= static_cast<int>(filters_.size())) return;
+    const std::string id = filters_[static_cast<std::size_t>(index)].id;
+    std::string error;
+    if (!edit::SelectFilter(source_->Folders(), id, error)) {
+        switchError_ = UiFormat("Not switched: {0}", {error});
+        ui.Repaint();
+        return;
+    }
+    switchError_.clear();
+    switching_ = id;
+    WaitForFilter(id, ui.Now() + 4000, ui);
+}
+
+void BrowseView::WaitForFilter(const std::string& id, std::uint64_t until, Ui& ui) {
+    // The loot filter sees selection.json change and loads the filter a moment later: ask until it has.
+    auto answer = std::make_shared<FilterInfo>();
+    std::shared_ptr<Source> source = source_;
+    std::shared_ptr<bool> alive = alive_;
+    const bool queued = ui.RunOnGame([source, answer] { *answer = source->Filter(); },
+                                     [this, alive, answer, id, until](Ui& back) {
+                                         if (!*alive || switching_ != id) return;
+                                         if (answer->filterId == id || back.Now() >= until) {
+                                             if (answer->filterId != id) switchError_ = UiText("The loot filter has not loaded it yet.");
+                                             switching_.clear();
+                                             Apply(*answer, back, true);
+                                             back.Repaint();
+                                             return;
+                                         }
+                                         WaitForFilter(id, until, back);
+                                     });
+    if (!queued) switching_.clear();
 }
 
 void BrowseView::ChooseSection(int row) {
@@ -583,14 +616,20 @@ void CommitChange(Ui& ui, const std::shared_ptr<Loaded>& loaded, const std::shar
     });
 }
 
-void BrowseView::StartRule(Ui& ui, DraftMaker makeDraft) {
+void BrowseView::StartRule(Ui& ui, DraftMaker makeDraft, ItemRules item) {
     if (!loaded_ || !loaded_->parsed || loaded_->session == nullptr || loaded_->game == nullptr) {
         pendingRule_ = true;  // once the filter is read (Apply)
         pendingDraft_ = std::move(makeDraft);
+        pendingItem_ = std::move(item);
         return;
     }
     pendingRule_ = false;
     pendingDraft_ = nullptr;
+    pendingItem_ = ItemRules{};
+    if (!item.matched.empty()) {
+        ui.PushView(std::make_shared<ItemRulesView>(loaded_, std::move(item), std::move(makeDraft)));
+        return;
+    }
     RuleDraft draft = makeDraft ? makeDraft(*loaded_->game) : RuleDraft{};
     ui.PushView(std::make_shared<AddRuleView>(loaded_, std::move(draft), std::string{}));
 }
@@ -655,14 +694,14 @@ void BrowseView::Layout(const LayoutContext& c) {
     addRule_.box = Box{gameSettings_.box.left - gap - addWidth, area.top, gameSettings_.box.left - gap, area.top + barHeight};
     addRule_.visible = !empty_ && loaded_ && loaded_->session != nullptr && loaded_->game != nullptr;
     int right = (addRule_.visible ? addRule_.box.left : gameSettings_.box.left) - gap;
-    if (level_.visible) {
-        int widest = m.S(120);
-        for (const std::string& option : level_.options) widest = std::max(widest, m.TextWidth(option, Font::Body) + m.S(40));
+    if (filter_.visible) {
+        int widest = m.S(160);
+        for (const std::string& option : filter_.options) widest = std::max(widest, m.TextWidth(option, Font::Body) + m.S(40));
         widest = std::min(widest, area.Width() / 3);
-        level_.box = Box{right - widest, area.top, right, area.top + barHeight};
-        const int labelWidth = m.TextWidth(UiText(levelLabel_.text), Font::Small) + m.S(8);
-        levelLabel_.box = Box{level_.box.left - labelWidth, area.top, level_.box.left - tight, area.top + barHeight};
-        right = levelLabel_.box.left - gap;
+        filter_.box = Box{right - widest, area.top, right, area.top + barHeight};
+        const int labelWidth = m.TextWidth(UiText(filterLabel_.text), Font::Small) + m.S(8);
+        filterLabel_.box = Box{filter_.box.left - labelWidth, area.top, filter_.box.left - tight, area.top + barHeight};
+        right = filterLabel_.box.left - gap;
     }
     search_.box = Box{area.left, area.top, right, area.top + barHeight};
     search_.enabled = !empty_;
@@ -685,19 +724,22 @@ void BrowseView::Layout(const LayoutContext& c) {
         infoRight = volumeLabel_.box.left - gap;
     }
     info_.box = Box{area.left, infoTop, infoRight, infoTop + infoHeight};
-    info_.color = volumeError_.empty() ? theme.dim : theme.danger;
+    const std::string& problem = !switchError_.empty() ? switchError_ : volumeError_;
+    info_.color = problem.empty() ? theme.dim : theme.danger;
     if (loaded_ && loaded_->parsed) {
         const document::Settings& s = loaded_->doc.GetSettings();
         std::string text = UiFormat("{0} rules", {std::to_string(loaded_->doc.ActiveCount())});
         if (!s.version.empty()) text += "  ·  " + UiFormat("version {0}", {s.version});
         if (!s.author.empty()) text += "  ·  " + UiFormat("by {0}", {s.author});
+        for (const document::FilterLevel& l : s.filterLevels)
+            if (l.id == loaded_->info.level) text += "  ·  " + UiFormat("level: {0}", {PickLanguage(l.name, loaded_->language)});
         if (loaded_->session != nullptr && loaded_->session->IsCopy()) text += "  ·  " + UiText("your version: your changes on top of the author's filter");
         else if (loaded_->info.shipped) text += "  ·  " + UiText("ships with the mod");
         if (loaded_->session == nullptr && !loaded_->sessionError.empty()) text += "  ·  " + UiFormat("read only: {0}", {loaded_->sessionError});
-        if (!volumeError_.empty()) text = volumeError_;
+        if (!problem.empty()) text = problem;
         info_.text = text;
     } else {
-        info_.text.clear();
+        info_.text = !switching_.empty() ? UiText("Switching the filter…") : problem;
     }
 
     const int listsTop = info_.box.bottom + tight;
@@ -730,7 +772,7 @@ void BrowseView::Layout(const LayoutContext& c) {
 }
 
 void BrowseView::FocusList(std::vector<Widget*>& out) {
-    out = {&search_, &levelLabel_, &level_, &addRule_, &gameSettings_, &info_, &volumeLabel_, &volume_, &volumeValue_, &volumeTest_,
+    out = {&search_, &filterLabel_, &filter_, &addRule_, &gameSettings_, &info_, &volumeLabel_, &volume_, &volumeValue_, &volumeTest_,
            &sectionList_, &count_, &ruleList_, &message_};
 }
 

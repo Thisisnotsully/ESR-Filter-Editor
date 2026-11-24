@@ -15,6 +15,7 @@
 #include "browse_view.hpp"
 #include "fakes.hpp"
 #include "add_rule_view.hpp"
+#include "item_rules_view.hpp"
 #include "rule_draft.h"
 #include "rule_text.h"
 #include "rule_view.hpp"
@@ -332,9 +333,41 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     data = h.view->Data();
     if (data == nullptr) return;
 
-    // The level: the game's, with rules for other levels greyed out (still listed).
-    CHECK(h.view->Levels().visible);
-    CHECK(h.view->Levels().SelectedText().find("(in use)") != std::string::npos);
+    // The filter in use, chosen in the drop-down; another one there switches the game to it.
+    {
+        edit::WriteText((user / "QoL-Filter" / ".esr-repo.json").string(), "{}");
+        edit::WriteText((user / "Other.json").string(), "{\"formatVersion\": 1, \"title\": \"Another filter\", \"rules\": []}");
+        h.Refresh(true);
+        h.Paint();
+        CHECK(h.view->Filters().visible && h.view->FilterChoices().size() == 2);
+        CHECK(h.view->Filters().SelectedText() == "Sully's QoL Filter");
+        int other = -1;
+        for (std::size_t i = 0; i < h.view->FilterChoices().size(); ++i)
+            if (h.view->FilterChoices()[i].id == "user:Other.json") other = static_cast<int>(i);
+        CHECK(other >= 0);
+        h.view->Filters().onChange(other, h.form);
+        std::string selection;
+        CHECK(edit::ReadText((user / "selection.json").string(), selection) && selection.find("\"activeFilter\": \"user:Other.json\"") != std::string::npos);
+        // The loot filter loads it: the editor shows it.
+        const FilterInfo before = h.source->info;
+        h.source->info.filterId = "user:Other.json";
+        h.source->info.path = (user / "Other.json").string();
+        h.source->Put("{\"formatVersion\": 1, \"title\": \"Another filter\", \"rules\": []}");
+        h.Run();  // the answer asked for at once: still the old one, so it asks again
+        h.Run();
+        h.Paint();
+        CHECK(h.view->Data() != nullptr && h.view->Data()->doc.GetSettings().title == "Another filter");
+        CHECK(h.view->Filters().SelectedText() == "Another filter");
+        // Back to Sully's for the rest.
+        h.source->info = before;
+        h.source->Put(filterText);
+        edit::SelectFilter(h.source->folders, before.filterId, selection);
+        h.Refresh(true);
+        h.Paint();
+        data = h.view->Data();
+        CHECK(data != nullptr && data->doc.GetSettings().title == "Sully's QoL Filter");
+        if (data == nullptr) return;
+    }
     const int r125 = RuleIndex(data->doc, "R133");
     CHECK(r125 >= 0);
 
@@ -754,6 +787,40 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         auto fromHover = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
         CHECK(fromHover != nullptr && fromHover->Draft().bases == std::vector<std::string>{"xhl"} && fromHover->Draft().stats.size() == 1);
         CHECK(fromHover != nullptr && fromHover->CurrentStep() == AddRuleView::Step::Action && !fromHover->Finish().enabled);
+        // An item rules matched: what the filter does with it first, each rule opening its card, then a new rule.
+        ItemRules item;
+        item.name = "Kenji's Winged Arrows";
+        item.hidden = true;
+        item.hiddenBy = "R133";
+        item.matched = {{"R164", "R164 | Uniques from the aq*/cq* codes", 300}, {"R133", "", 200}, {"", "no id here", 12}};
+        h.platform.pushed.clear();
+        h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("aq2", 7, 85, {}, g); }, item);
+        auto about = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<ItemRulesView>(h.platform.pushed.back());
+        CHECK(about != nullptr);
+        if (about != nullptr) {
+            esrfe::overlay::Form af{h.platform, about};
+            af.Layout(h.client, h.content);
+            af.Paint(h.platform.canvas);
+            CHECK(about->Rows().size() == 3);
+            CHECK(about->Rows()[0].rule >= 0 && about->Rows()[0].head.rfind("R164", 0) == 0 && !about->Rows()[0].hides);
+            CHECK(about->Rows()[1].hides && about->Rows()[1].head.find("hides it") != std::string::npos);
+            CHECK(about->Rows()[2].rule < 0);  // no id: listed, not opened
+            CHECK(about->State().find("Hidden by R133") != std::string::npos);
+            h.platform.pushed.clear();
+            about->OpenRow(2, af);
+            CHECK(h.platform.pushed.empty());
+            about->OpenRow(0, af);
+            auto rc = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<RuleView>(h.platform.pushed.back());
+            CHECK(rc != nullptr);
+            h.platform.pushed.clear();
+            about->AddButton().onClick(af);
+            auto add = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
+            CHECK(add != nullptr && add->Draft().kind == ItemKind::Unique && add->Draft().uniques == std::vector<int>{85});
+        }
+        // No rule matched: straight to the steps.
+        h.platform.pushed.clear();
+        h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("cap", 2, -1, {}, g); }, ItemRules{"Cap"});
+        CHECK(!h.platform.pushed.empty() && std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back()) != nullptr);
     }
 
     // ---- the filter's volume: saved in the player's version, heard at the loot filter's volume ----

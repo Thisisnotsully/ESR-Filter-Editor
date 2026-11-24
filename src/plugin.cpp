@@ -351,7 +351,31 @@ auto PrintItem(const Bridge::HoveredItem& item, bool chat) -> std::vector<esrfe:
 }
 
 // The editor, on a new rule for the item: its base, tier and rarity chosen, its stats ticked (defined with the window).
-void OpenRuleForItem(const std::string& code, int quality, int uniqueOrSetId, std::vector<esrfe::ui::ItemStat> stats);
+void OpenRuleForItem(const std::string& code, int quality, int uniqueOrSetId, std::vector<esrfe::ui::ItemStat> stats,
+                     esrfe::ui::ItemRules rules);
+
+// What the filter does with the item, for the editor: each matched rule by its id (from its title), the hiding one.
+auto RulesOf(const Bridge::HoveredItem& item) -> esrfe::ui::ItemRules {
+    esrfe::ui::ItemRules out;
+    out.name = Text(item.name);
+    out.hidden = item.hidden != 0;
+    out.hiddenUnmatched = item.hiddenBy == -1;
+    const auto idOf = [](const std::string& title) {
+        return TitleHasId(title) ? title.substr(0, title.find_first_of(" |")) : std::string{};
+    };
+    if (item.hiddenBy > 0) out.hiddenBy = idOf(RuleTitle(item.hiddenBy));
+    const uint32_t listed = std::min<uint32_t>(item.matchedCount, Bridge::MaxMatchedRules);
+    out.more = item.matchedCount > listed;
+    for (uint32_t i = 0; i < listed; ++i) {
+        const int number = item.matchedRules[i];
+        const std::string title = RuleTitle(number);
+        const std::string id = idOf(title);
+        // A highlight of the player's is in the game's file twice (its show-only copy first): listed once.
+        if (!id.empty() && std::any_of(out.matched.begin(), out.matched.end(), [&id](const auto& m) { return m.id == id; })) continue;
+        out.matched.push_back({id, title, number});
+    }
+    return out;
+}
 
 auto __cdecl OnEditItem(const D2RL::PluginContext*, const D2RL::Input::ActionEvent* event, void*) noexcept -> D2RL::Input::ActionResult {
     if (!D2RL::Input::HasActionEventField(event, D2RL::Input::ActionEventRequiredSize)
@@ -371,7 +395,7 @@ auto __cdecl OnEditItem(const D2RL::PluginContext*, const D2RL::Input::ActionEve
             return D2RL::Input::ActionResult::Handled;
         }
         std::vector<esrfe::ui::ItemStat> stats = PrintItem(item, HoverChat.load());
-        OpenRuleForItem(Text(item.code), static_cast<int>(item.quality), item.uniqueOrSetId, std::move(stats));
+        OpenRuleForItem(Text(item.code), static_cast<int>(item.quality), item.uniqueOrSetId, std::move(stats), RulesOf(item));
     } catch (...) {
     }
     return D2RL::Input::ActionResult::Handled;
@@ -568,17 +592,21 @@ void LoadGameData() noexcept {
     }
 }
 
-void OpenRuleForItem(const std::string& code, int quality, int uniqueOrSetId, std::vector<esrfe::ui::ItemStat> stats) {
+void OpenRuleForItem(const std::string& code, int quality, int uniqueOrSetId, std::vector<esrfe::ui::ItemStat> stats,
+                     esrfe::ui::ItemRules rules) {
     if (!Window) {
         LogWarn("Loot Filter Editor: the window is unavailable (see the lines above); the edit-item key does nothing.");
         return;
     }
     Window->Open();
-    Window->PostToUi([code, quality, uniqueOrSetId, stats = std::move(stats)](ov::Ui& ui) {
+    Window->PostToUi([code, quality, uniqueOrSetId, stats = std::move(stats), rules = std::move(rules)](ov::Ui& ui) {
         if (auto view = Browse.lock()) {
-            view->StartRule(ui, [code, quality, uniqueOrSetId, stats](const gamedata::GameData& game) {
-                return esrfe::ui::FromItem(code, quality, uniqueOrSetId, stats, game);
-            });
+            view->StartRule(
+                ui,
+                [code, quality, uniqueOrSetId, stats](const gamedata::GameData& game) {
+                    return esrfe::ui::FromItem(code, quality, uniqueOrSetId, stats, game);
+                },
+                rules);
         }
     });
 }
@@ -947,7 +975,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.6.0",
+    .version     = "0.7.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,

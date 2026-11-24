@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 
+#include <algorithm>
 #include <filesystem>
 
 #include "changes.h"
@@ -391,6 +392,34 @@ int main(int argc, char** argv) {
             const auto updates = UpdateCopies(folders);
             // The player removed "hide" and so did Sully: the same, no conflict.
             CHECK(updates.size() == 1 && updates[0].conflicts == 0);
+        }
+        // The filters to choose from: the repository's (it has .esr-repo.json), the player's version, a shipped one;
+        // not the editor's changes, not a JSON file that is no filter, not a folder that is no repository.
+        {
+            CHECK(WriteText((repo / ".esr-repo.json").string(), "{}"));
+            fs::create_directories(root / "shipped");
+            CHECK(WriteText((root / "shipped" / "sources.json").string(), "{\"sources\": []}"));
+            CHECK(WriteText((root / "shipped" / "Plain.json").string(), "{\"formatVersion\": 1, \"rules\": []}"));
+            fs::create_directories(user / "loose");
+            CHECK(WriteText((user / "loose" / "Other.json").string(), "{\"title\": \"Loose\", \"rules\": []}"));
+            const std::vector<FilterChoice> filters = ListFilters(folders);
+            std::vector<std::string> ids;
+            for (const FilterChoice& f : filters) ids.push_back(f.id);
+            CHECK(ids.size() == 3);
+            CHECK(std::find(ids.begin(), ids.end(), repoId) != ids.end());
+            CHECK(std::find(ids.begin(), ids.end(), "user:Sullys-QoL-Filter (my version).json") != ids.end());
+            CHECK(std::find(ids.begin(), ids.end(), "shipped:Plain.json") != ids.end());
+            for (const FilterChoice& f : filters) {
+                if (f.id == repoId) CHECK(f.title == "Sully's QoL Filter" && !f.mine);
+                if (f.id.starts_with("user:")) CHECK(f.mine && f.title.find("Sully") != std::string::npos);
+                if (f.id == "shipped:Plain.json") CHECK(f.title == "Plain");
+            }
+            std::string error, selection;
+            CHECK(SelectFilter(folders, repoId, error));
+            CHECK(ReadText((user / "selection.json").string(), selection));
+            CHECK(selection.find("\"activeFilter\": \"" + repoId + "\"") != std::string::npos);
+            CHECK(selection.find("\"levels\"") != std::string::npos);  // the rest kept
+            CHECK(!SelectFilter(folders, "user:../x.json", error));
         }
         fs::remove_all(root);
     }
