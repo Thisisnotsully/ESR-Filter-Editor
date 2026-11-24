@@ -31,7 +31,6 @@ Unique Mythical Ring                          | mrn | 7 | -1 | 4 | - | shown mat
 Unique Mythical Amulet                        | mam | 7 | -1 | 4 | - | shown match:R199
 # Mythical lists hold all 61 bases (m40-m61 and dd1 were missing from R115, R116, R163)
 Normal Mythical base m45 (L4)                 | m45 | 2 | 2 | 4 | - | hidden match:R116
-Magic Mythical base m50 (L4)                  | m50 | 4 | 2 | 4 | - | hidden match:R115
 Superior Mythical base m45                    | m45 | 3 | 2 | 3 | - | match:R163
 Normal Mythical Death Blade dd1 (L4)          | dd1 | 2 | 2 | 4 | - | hidden match:R116
 Normal Mythical base m45 (L2, not hidden)     | m45 | 2 | 2 | 2 | - | shown
@@ -48,3 +47,13 @@ Unique Vessel of Souls (mam)                  | mam | 7 | -1 | 4 | uid=1099 | sh
 Flawed crystal xl0                            | xl0 | 2 | -1 | 2 | - | match:R212 match:R706
 Crystal xty                                   | xty | 2 | -1 | 2 | - | match:R212 match:R729
 Perfect gem gbk                               | gbk | 2 | -1 | 2 | - | match:R220
+
+# ---- 0.9.5
+# Magic Mythical weapons and armor are never hidden (R115 removed)
+Magic Mythical weapon m50 (L4)                | m50 | 4 | 2 | 4 | - | shown
+Magic Mythical Death Blade dd1 (L4)           | dd1 | 4 | 2 | 4 | - | shown
+Magic Mythical armor m60 Light Plate (L4)     | m60 | 4 | 2 | 4 | - | shown
+Magic Mythical armor m20 Diadem (L4)          | m20 | 4 | 2 | 4 | - | shown
+Magic Mythical weapon m01, clvl 90 (L3)       | m01 | 4 | 2 | 3 | - | shown
+Magic Mythical armor m06, clvl 90 (L1)        | m06 | 4 | 2 | 1 | - | shown
+Magic 7wd elite sword (L4, not a Mythical)    | 7wd | 4 | 2 | 4 | - | hidden
