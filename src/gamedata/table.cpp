@@ -1,23 +1,17 @@
 #include "table.h"
 
 #include <charconv>
-#include <cstdio>
+#include <fstream>
+#include <iterator>
 
 namespace gamedata {
 
 auto ReadFile(const std::string& path, std::string& out) -> bool {
     out.clear();
-    std::FILE* f = std::fopen(path.c_str(), "rb");
-    if (f == nullptr) return false;
-    char buffer[65536];
-    for (;;) {
-        const std::size_t n = std::fread(buffer, 1, sizeof buffer, f);
-        if (n == 0) break;
-        out.append(buffer, n);
-    }
-    const bool ok = std::ferror(f) == 0;
-    std::fclose(f);
-    return ok;
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return false;
+    out.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    return !file.bad();
 }
 
 auto IsUtf8(std::string_view text) -> bool {
