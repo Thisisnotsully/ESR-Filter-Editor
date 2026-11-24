@@ -50,8 +50,8 @@ int main(int argc, char** argv) {
     const std::string author = buffer.str();
     document::Document base;
     CHECK(Read(author, base));
-    const Value r090 = *RuleOf(base, "R090");
-    const Value r125 = *RuleOf(base, "R125");
+    const Value r090 = *RuleOf(base, "R099");
+    const Value r125 = *RuleOf(base, "R133");
 
     // Nothing changed: the copy is the author's filter with its own title and no update address.
     ChangeSet changes;
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     CHECK(Merge(m.text, changes).text == m.text);
 
     // Editing: levels, the action, an item, a rule off.
-    RuleChange& c090 = changes.Get("R090");
+    RuleChange& c090 = changes.Get("R099");
     Value levels = Ints({3, 4});
     SetField(c090, r090, "activeInLevels", &levels);
     CHECK(c090.fields.size() == 1 && c090.fields[0].authorHad);
@@ -83,23 +83,23 @@ int main(int argc, char** argv) {
     CHECK(c090.RemovedFrom("itemCodes") != nullptr && c090.RemovedFrom("itemCodes")->size() == 1);
     CHECK(Effective(r090, c090).Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
 
-    RuleChange& c125 = changes.Get("R125");  // hide -> always show
+    RuleChange& c125 = changes.Get("R133");  // hide -> always show
     SetField(c125, r125, "hide", nullptr);
     Value yes = Value::Bool(true);
     SetField(c125, r125, "show", &yes);
     CHECK(c125.fields.size() == 2);
     CHECK(Effective(r125, c125).Find("hide") == nullptr && Effective(r125, c125).Find("show") != nullptr);
-    changes.Get("R271").off = true;
+    changes.Get("R303").off = true;
     CHECK(!changes.rules[0].snapshot.IsNull());
 
     m = Merge(author, changes);
     CHECK(m.ok);
     CHECK(Read(m.text, copy));
     CHECK(copy.ActiveCount() == base.ActiveCount() - 1);
-    CHECK(RuleOf(copy, "R271") == nullptr);
-    CHECK(*RuleOf(copy, "R090")->Find("activeInLevels") == levels);
-    CHECK(RuleOf(copy, "R090")->Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
-    CHECK(RuleOf(copy, "R125")->Find("show") != nullptr && RuleOf(copy, "R125")->Find("hide") == nullptr);
+    CHECK(RuleOf(copy, "R303") == nullptr);
+    CHECK(*RuleOf(copy, "R099")->Find("activeInLevels") == levels);
+    CHECK(RuleOf(copy, "R099")->Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
+    CHECK(RuleOf(copy, "R133")->Find("show") != nullptr && RuleOf(copy, "R133")->Find("hide") == nullptr);
     // Only the changed rules' text changed.
     {
         std::size_t same = 0;
@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
         OwnRule own;
         own.id = changes.NextOwnId();
         CHECK(own.id == "U001");
-        own.after = "R271";  // off, but still a place to follow
+        own.after = "R303";  // off, but still a place to follow
         own.section = "Highlights and Labels > Special items";
         own.rule = Value::Object({{"comment", Value::String("U001 | my rule | hide")}, {"itemCodes", Value::Array({Value::String("gcv")})}, {"hide", yes}});
         changes.own.push_back(own);
@@ -131,10 +131,10 @@ int main(int argc, char** argv) {
         const int u2 = copy.FindRule("U002");
         CHECK(u2 >= 0 && copy.Rules()[static_cast<std::size_t>(u2)].part == copy.FindHeading("My Rules"));
         CHECK(m.notes.size() == 1);
-        // U001 sits where R271 was (R271 is off and gone).
+        // U001 sits where R303 was (R303 is off and gone).
         const int u1 = copy.FindRule("U001");
-        const int r270 = copy.FindRule("R270");
-        CHECK(u1 >= 0 && copy.Rules()[static_cast<std::size_t>(u1)].section == base.Rules()[static_cast<std::size_t>(base.FindRule("R271"))].section);
+        const int r270 = copy.FindRule("R302");
+        CHECK(u1 >= 0 && copy.Rules()[static_cast<std::size_t>(u1)].section == base.Rules()[static_cast<std::size_t>(base.FindRule("R303"))].section);
         (void)r270;
     }
 
@@ -148,38 +148,38 @@ int main(int argc, char** argv) {
     CHECK(Render(again) == saved);
     CHECK(again.rules.size() == 3 && again.own.size() == 2 && again.baseHash == changes.baseHash);
 
-    // The author updates: R090's levels changed by the author too, R125 deleted, R271 untouched.
+    // The author updates: R099's levels changed by the author too, R133 deleted, R303 untouched.
     {
         document::Document updated;
         CHECK(Read(author, updated));
-        CHECK(updated.SetField(updated.FindRule("R090"), "activeInLevels", Ints({2, 4})));
-        CHECK(updated.DeleteRule(updated.FindRule("R125")));
+        CHECK(updated.SetField(updated.FindRule("R099"), "activeInLevels", Ints({2, 4})));
+        CHECK(updated.DeleteRule(updated.FindRule("R133")));
         CHECK(updated.SetSetting("version", Value::String("9.9.9")));
         const std::string newer = updated.Text();
         m = Merge(newer, changes);
         CHECK(m.ok);
         int fieldConflicts = 0, deleted = 0;
         for (const Conflict& c : m.conflicts) {
-            if (c.kind == Conflict::Kind::Field && c.id == "R090" && c.key == "activeInLevels") ++fieldConflicts;
-            if (c.kind == Conflict::Kind::Deleted && c.id == "R125") ++deleted;
+            if (c.kind == Conflict::Kind::Field && c.id == "R099" && c.key == "activeInLevels") ++fieldConflicts;
+            if (c.kind == Conflict::Kind::Deleted && c.id == "R133") ++deleted;
         }
         CHECK(fieldConflicts == 1 && deleted == 1 && m.conflicts.size() == 2);
         // Meanwhile the copy has the player's levels.
         CHECK(Read(m.text, copy));
-        CHECK(*RuleOf(copy, "R090")->Find("activeInLevels") == levels);
+        CHECK(*RuleOf(copy, "R099")->Find("activeInLevels") == levels);
 
-        // Keep mine for both: R090 keeps [3, 4] and follows the author's [2, 4] from now on; R125 becomes U003.
+        // Keep mine for both: R099 keeps [3, 4] and follows the author's [2, 4] from now on; R133 becomes U003.
         ChangeSet keep = changes;
         for (const Conflict& c : m.conflicts) Resolve(keep, c, true);
         keep.baseHash = Hash(newer);
-        CHECK(keep.Find("R125") == nullptr);
+        CHECK(keep.Find("R133") == nullptr);
         CHECK(keep.own.size() == 3 && keep.own.back().id == "U003");
         CHECK(keep.own.back().rule.Find("comment")->Str().rfind("U003 | On level 3", 0) == 0);
         CHECK(keep.own.back().rule.Find("show") != nullptr);  // with the player's change
         m = Merge(newer, keep);
         CHECK(m.ok && m.conflicts.empty());
         CHECK(Read(m.text, copy));
-        CHECK(*RuleOf(copy, "R090")->Find("activeInLevels") == levels);
+        CHECK(*RuleOf(copy, "R099")->Find("activeInLevels") == levels);
         CHECK(RuleOf(copy, "U003") != nullptr);
         if (argc > 2) {  // for the loot filter's own reader (tools/filtercheck)
             std::ofstream out(argv[2], std::ios::binary);
@@ -190,12 +190,12 @@ int main(int argc, char** argv) {
         ChangeSet theirs = changes;
         for (const Conflict& c : Merge(newer, changes).conflicts) Resolve(theirs, c, false);
         theirs.baseHash = Hash(newer);
-        CHECK(theirs.Find("R125") == nullptr && theirs.own.size() == 2);
-        CHECK(theirs.Find("R090") != nullptr && theirs.Find("R090")->fields.empty());  // the removed gem stays
+        CHECK(theirs.Find("R133") == nullptr && theirs.own.size() == 2);
+        CHECK(theirs.Find("R099") != nullptr && theirs.Find("R099")->fields.empty());  // the removed gem stays
         m = Merge(newer, theirs);
         CHECK(m.ok && m.conflicts.empty());
         CHECK(Read(m.text, copy));
-        CHECK(*RuleOf(copy, "R090")->Find("activeInLevels") == Ints({2, 4}));
+        CHECK(*RuleOf(copy, "R099")->Find("activeInLevels") == Ints({2, 4}));
     }
 
     // The game's selection.
@@ -245,13 +245,13 @@ int main(int argc, char** argv) {
         CHECK(session.Open(repoId, PathOfId(repoId, folders), folders, error));
         CHECK(!session.IsCopy() && !session.HasChanges());
         CHECK(session.MergedId() == "user:Sullys-QoL-Filter (my version).json");
-        session.SetOff("R271", true);
-        session.SetItem("R090", "itemCodes", gem, true);
-        CHECK(session.IsOff("R271"));
-        CHECK(session.Effective("R090").Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
+        session.SetOff("R303", true);
+        session.SetItem("R099", "itemCodes", gem, true);
+        CHECK(session.IsOff("R303"));
+        CHECK(session.Effective("R099").Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
         document::Document view;
         CHECK(Read(session.ViewText(), view));
-        CHECK(view.FindRule("R271") >= 0);  // off rules stay in what the editor shows
+        CHECK(view.FindRule("R303") >= 0);  // off rules stay in what the editor shows
         bool switched = false;
         CHECK(session.Save(error, switched));
         if (!error.empty()) std::printf("  save: %s\n", error.c_str());
@@ -262,7 +262,7 @@ int main(int argc, char** argv) {
         CHECK(text.find("\"user:Sullys-QoL-Filter (my version).json\": 2") != std::string::npos);
         CHECK(ReadText(session.MergedPath(), text));
         CHECK(Read(text, copy));
-        CHECK(copy.FindRule("R271") < 0 && copy.ActiveCount() == base.ActiveCount() - 1);
+        CHECK(copy.FindRule("R303") < 0 && copy.ActiveCount() == base.ActiveCount() - 1);
         CHECK(ReadText((user / "sounds" / "gong.mp3").string(), text) && text == "GONG");
         CHECK(ReadText((user / "icons" / "gem.sprite").string(), text) && text == "GEM");
         CHECK(ReadText((user / "sounds" / "tink.mp3").string(), text) && text == "SOMEONE ELSE'S");
@@ -271,9 +271,9 @@ int main(int argc, char** argv) {
         // Opening the copy again: the changes come back, nothing switches.
         Session again;
         CHECK(again.Open(session.MergedId(), session.MergedPath(), folders, error));
-        CHECK(again.IsCopy() && again.IsOff("R271") && again.Conflicts().empty());
-        again.SetOff("R271", false);
-        CHECK(!again.IsOff("R271"));
+        CHECK(again.IsCopy() && again.IsOff("R303") && again.Conflicts().empty());
+        again.SetOff("R303", false);
+        CHECK(!again.IsOff("R303"));
         CHECK(again.Save(error, switched) && !switched);
 
         // The player went back to Sully's filter in the launcher: the changes are still theirs.
@@ -281,31 +281,31 @@ int main(int argc, char** argv) {
         CHECK(back.Open(repoId, PathOfId(repoId, folders), folders, error));
         CHECK(!back.IsCopy() && back.HasChanges());
 
-        // Sully updates: R090's levels change (the player did not change them), the copy follows at the next start.
+        // Sully updates: R099's levels change (the player did not change them), the copy follows at the next start.
         {
             document::Document updated;
             CHECK(Read(author, updated));
-            CHECK(updated.SetField(updated.FindRule("R090"), "activeInLevels", Ints({1, 4})));
+            CHECK(updated.SetField(updated.FindRule("R099"), "activeInLevels", Ints({1, 4})));
             CHECK(WriteText((repo / "Sullys-QoL-Filter.json").string(), updated.Text()));
             const auto updates = UpdateCopies(folders);
             CHECK(updates.size() == 1 && updates[0].updated && updates[0].conflicts == 0);
             CHECK(ReadText(session.MergedPath(), text) && Read(text, copy));
-            CHECK(*RuleOf(copy, "R090")->Find("activeInLevels") == Ints({1, 4}));
-            CHECK(RuleOf(copy, "R090")->Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
+            CHECK(*RuleOf(copy, "R099")->Find("activeInLevels") == Ints({1, 4}));
+            CHECK(RuleOf(copy, "R099")->Find("itemCodes")->array.size() == r090.Find("itemCodes")->array.size() - 1);
             CHECK(UpdateCopies(folders).empty());  // nothing new
         }
-        // Another update that conflicts: the player changed R125's action, Sully too.
+        // Another update that conflicts: the player changed R133's action, Sully too.
         {
             Session s2;
             CHECK(s2.Open(session.MergedId(), session.MergedPath(), folders, error));
-            s2.SetField("R125", "hide", nullptr);
+            s2.SetField("R133", "hide", nullptr);
             CHECK(s2.Save(error, switched));
             std::string current;
             CHECK(ReadText((repo / "Sullys-QoL-Filter.json").string(), current));
             document::Document updated;
             CHECK(Read(current, updated));
-            CHECK(updated.RemoveField(updated.FindRule("R125"), "hide"));
-            CHECK(updated.SetField(updated.FindRule("R125"), "show", Value::Bool(true)));
+            CHECK(updated.RemoveField(updated.FindRule("R133"), "hide"));
+            CHECK(updated.SetField(updated.FindRule("R133"), "show", Value::Bool(true)));
             CHECK(WriteText((repo / "Sullys-QoL-Filter.json").string(), updated.Text()));
             const auto updates = UpdateCopies(folders);
             // The player removed "hide" and so did Sully: the same, no conflict.

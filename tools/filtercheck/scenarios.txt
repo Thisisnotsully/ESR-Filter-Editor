@@ -1,55 +1,55 @@
 # Test items for Sully's QoL Filter. Each change to the filter adds the items it is about.
 # name | code | quality (2 normal 3 superior 4 magic 6 rare 7 unique) | tier (-1 none) | filter level | stats (name=value, ...; unid=1 for unidentified) | expect
-# expect: shown, hidden, match:R123, nomatch:R123 (several, space separated)
+# expect: shown, hidden, match:R131, nomatch:R131 (several, space separated)
 
 # ---- 0.9.4
 # Superior missile weapons: projectile speed
-Superior crossbow, +25% projectile speed      | lxb | 3 | 0 | 4 | projectilespeed=25 | shown match:R697
-Superior bow, +12% projectile speed (L3)      | sbw | 3 | 0 | 3 | projectilespeed=12 | shown match:R698 nomatch:R697
-Superior bow, +12% projectile speed (L4)      | sbw | 3 | 0 | 4 | projectilespeed=12 | hidden nomatch:R698
+Superior crossbow, +25% projectile speed      | lxb | 3 | 0 | 4 | projectilespeed=25 | shown match:R061
+Superior bow, +12% projectile speed (L3)      | sbw | 3 | 0 | 3 | projectilespeed=12 | shown match:R062 nomatch:R061
+Superior bow, +12% projectile speed (L4)      | sbw | 3 | 0 | 4 | projectilespeed=12 | hidden nomatch:R062
 # Javelins are not missile weapons in ESR (jave: comb, spea), so they cannot roll projectile speed.
-Superior javelin (cannot roll it)             | jav | 3 | 0 | 4 | projectilespeed=25 | nomatch:R697
-Magic crossbow, +25% projectile speed         | lxb | 4 | 0 | 2 | projectilespeed=25 | nomatch:R697 nomatch:R698
+Superior javelin (cannot roll it)             | jav | 3 | 0 | 4 | projectilespeed=25 | nomatch:R061
+Magic crossbow, +25% projectile speed         | lxb | 4 | 0 | 2 | projectilespeed=25 | nomatch:R061 nomatch:R062
 # Superior crossbows
-Superior crossbow, +1 bolts (-10% damage)     | lxb | 3 | 0 | 4 | totalcrossbowbolts=1,totalcrossbowdamage=-10 | shown match:R699 nomatch:R700 nomatch:R701
-Superior crossbow, +25% total damage          | lxb | 3 | 0 | 4 | totalcrossbowdamage=25 | shown match:R700
-Superior crossbow, +22% total damage (L3)     | lxb | 3 | 0 | 3 | totalcrossbowdamage=22 | shown match:R701 nomatch:R700
+Superior crossbow, +1 bolts (-10% damage)     | lxb | 3 | 0 | 4 | totalcrossbowbolts=1,totalcrossbowdamage=-10 | shown match:R063 nomatch:R064 nomatch:R065
+Superior crossbow, +25% total damage          | lxb | 3 | 0 | 4 | totalcrossbowdamage=25 | shown match:R064
+Superior crossbow, +22% total damage (L3)     | lxb | 3 | 0 | 3 | totalcrossbowdamage=22 | shown match:R065 nomatch:R064
 Superior crossbow, +22% total damage (L4)     | lxb | 3 | 0 | 4 | totalcrossbowdamage=22 | hidden
-Superior crossbow, reload limit 5%            | lxb | 3 | 0 | 4 | crossbowreloadspeedlimit=5 | shown match:R702
-Superior crossbow, reload limit 4% (L3)       | lxb | 3 | 0 | 3 | crossbowreloadspeedlimit=4 | shown match:R703 nomatch:R702
+Superior crossbow, reload limit 5%            | lxb | 3 | 0 | 4 | crossbowreloadspeedlimit=5 | shown match:R066
+Superior crossbow, reload limit 4% (L3)       | lxb | 3 | 0 | 3 | crossbowreloadspeedlimit=4 | shown match:R067 nomatch:R066
 Superior crossbow, no special roll (L4)       | lxb | 3 | 0 | 4 | - | hidden
 # Superior helms
-Superior cap, +1 maximum curses               | cap | 3 | 0 | 4 | extra_curse=1 | shown match:R704
-Superior cap, no special roll (L4)            | cap | 3 | 0 | 4 | - | hidden nomatch:R704
+Superior cap, +1 maximum curses               | cap | 3 | 0 | 4 | extra_curse=1 | shown match:R068
+Superior cap, no special roll (L4)            | cap | 3 | 0 | 4 | - | hidden nomatch:R068
 # Rare rings and amulets
-Rare Mythical Ring                            | mrn | 6 | -1 | 4 | - | shown match:R271
-Rare Mythical Amulet                          | mam | 6 | -1 | 4 | - | shown match:R271
-Rare ring                                     | rin | 6 | -1 | 4 | - | shown match:R271
-Rare amulet                                   | amu | 6 | -1 | 4 | - | shown match:R271
-Rare class ring (keeps its own rule)          | zrn | 6 | -1 | 4 | - | shown match:R269 nomatch:R271
-Unique Mythical Ring                          | mrn | 7 | -1 | 4 | - | shown match:R164
-Unique Mythical Amulet                        | mam | 7 | -1 | 4 | - | shown match:R199
-# Mythical lists hold all 61 bases (m40-m61 and dd1 were missing from R115, R116, R163)
-Normal Mythical base m45 (L4)                 | m45 | 2 | 2 | 4 | - | hidden match:R116
-Superior Mythical base m45                    | m45 | 3 | 2 | 3 | - | match:R163
-Normal Mythical Death Blade dd1 (L4)          | dd1 | 2 | 2 | 4 | - | hidden match:R116
+Rare Mythical Ring                            | mrn | 6 | -1 | 4 | - | shown match:R303
+Rare Mythical Amulet                          | mam | 6 | -1 | 4 | - | shown match:R303
+Rare ring                                     | rin | 6 | -1 | 4 | - | shown match:R303
+Rare amulet                                   | amu | 6 | -1 | 4 | - | shown match:R303
+Rare class ring (keeps its own rule)          | zrn | 6 | -1 | 4 | - | shown match:R301 nomatch:R303
+Unique Mythical Ring                          | mrn | 7 | -1 | 4 | - | shown match:R172
+Unique Mythical Amulet                        | mam | 7 | -1 | 4 | - | shown match:R207
+# Mythical lists hold all 61 bases (m40-m61 and dd1 were missing from three Mythical rules before 0.9.4)
+Normal Mythical base m45 (L4)                 | m45 | 2 | 2 | 4 | - | hidden match:R124
+Superior Mythical base m45                    | m45 | 3 | 2 | 3 | - | match:R171
+Normal Mythical Death Blade dd1 (L4)          | dd1 | 2 | 2 | 4 | - | hidden match:R124
 Normal Mythical base m45 (L2, not hidden)     | m45 | 2 | 2 | 2 | - | shown
 # 7wd is an ordinary elite sword, not a Mythical
-Normal 7wd elite sword (L3)                   | 7wd | 2 | 2 | 3 | - | hidden nomatch:R116
-Normal 7wd elite sword, clvl 90 (L1)          | 7wd | 2 | 2 | 1 | - | hidden match:R096
+Normal 7wd elite sword (L3)                   | 7wd | 2 | 2 | 3 | - | hidden nomatch:R124
+Normal 7wd elite sword, clvl 90 (L1)          | 7wd | 2 | 2 | 1 | - | hidden match:R105
 # au9: only the Lich King Essences (rows 1090-1095) are Mythical; the other au9 uniques are ordinary unique amulets
-Unique Lich King Essence Fire (au9)           | au9 | 7 | -1 | 4 | uid=1090 | shown match:R705 match:R165 nomatch:R155 nomatch:R001
-Unique Mara's Kaleidoscope (au9)              | au9 | 7 | -1 | 4 | uid=962 | shown match:R155 nomatch:R165 nomatch:R705
-Unique Highlord's Wrath (au9, not Mythical)   | au9 | 7 | -1 | 4 | uid=966 | match:R155 nomatch:R165
-Unique Mythical Highlord's Wrath (mam)        | mam | 7 | -1 | 4 | uid=1098 | shown match:R001 match:R199
-Unique Vessel of Souls (mam)                  | mam | 7 | -1 | 4 | uid=1099 | shown match:R001 match:R199
+Unique Lich King Essence Fire (au9)           | au9 | 7 | -1 | 4 | uid=1090 | shown match:R002 match:R173 nomatch:R163 nomatch:R001
+Unique Mara's Kaleidoscope (au9)              | au9 | 7 | -1 | 4 | uid=962 | shown match:R163 nomatch:R173 nomatch:R002
+Unique Highlord's Wrath (au9, not Mythical)   | au9 | 7 | -1 | 4 | uid=966 | match:R163 nomatch:R173
+Unique Mythical Highlord's Wrath (mam)        | mam | 7 | -1 | 4 | uid=1098 | shown match:R001 match:R207
+Unique Vessel of Souls (mam)                  | mam | 7 | -1 | 4 | uid=1099 | shown match:R001 match:R207
 # ESR crystals and perfect gems: gold background; crystals get their game name without the item level
-Flawed crystal xl0                            | xl0 | 2 | -1 | 2 | - | match:R212 match:R706
-Crystal xty                                   | xty | 2 | -1 | 2 | - | match:R212 match:R729
-Perfect gem gbk                               | gbk | 2 | -1 | 2 | - | match:R220
+Flawed crystal xl0                            | xl0 | 2 | -1 | 2 | - | match:R220 match:R229
+Crystal xty                                   | xty | 2 | -1 | 2 | - | match:R220 match:R252
+Perfect gem gbk                               | gbk | 2 | -1 | 2 | - | match:R228
 
 # ---- 0.9.5
-# Magic Mythical weapons and armor are never hidden (R115 removed)
+# Magic Mythical weapons and armor are never hidden (0.9.5 removed the level 4 rule that hid them)
 Magic Mythical weapon m50 (L4)                | m50 | 4 | 2 | 4 | - | shown
 Magic Mythical Death Blade dd1 (L4)           | dd1 | 4 | 2 | 4 | - | shown
 Magic Mythical armor m60 Light Plate (L4)     | m60 | 4 | 2 | 4 | - | shown

@@ -17,8 +17,8 @@ Prints the next unused R### id (past every retired one). Exits 1 when something 
 import csv, json, re, sys
 
 # Ids of rules deleted from a released version, and the version that deleted them. Add each deleted rule here.
+# Empty until the editor is public: before that no player has changes by id, and 0.9.6 numbered every rule afresh.
 RETIRED = {
-    115: "0.9.5 (magic Mythical bases are never hidden)",
 }
 
 LANGS = ["enUS", "deDE", "esES", "frFR", "itIT", "koKR", "plPL", "ruRU", "zhCN", "zhTW", "esMX", "jaJP", "ptBR"]

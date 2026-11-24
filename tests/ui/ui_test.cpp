@@ -181,7 +181,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     // The level: the game's, with rules for other levels greyed out (still listed).
     CHECK(h.view->Levels().visible);
     CHECK(h.view->Levels().SelectedText().find("(in use)") != std::string::npos);
-    const int r125 = RuleIndex(data->doc, "R125");
+    const int r125 = RuleIndex(data->doc, "R133");
     CHECK(r125 >= 0);
 
     // A part opens with a click and shows its sections; a section shows its rules.
@@ -222,7 +222,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     h.form.Focus(&h.view->Search());
     h.Type("maximum curses");
     bool found = false;
-    for (int r : h.view->ShownRules()) found = found || data->doc.Rules()[static_cast<std::size_t>(r)].id == "R704";
+    for (int r : h.view->ShownRules()) found = found || data->doc.Rules()[static_cast<std::size_t>(r)].id == "R068";
     CHECK(found);
     CHECK(h.view->ShownRules().size() < 10);
     // Only rules whose own words have the search: every one shown says "Maximum Curses" somewhere.
@@ -292,7 +292,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             h.form.KeyDown(go);
             return h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<RuleView>(h.platform.pushed.back());
         };
-        std::shared_ptr<RuleView> card = openCard("R125");
+        std::shared_ptr<RuleView> card = openCard("R133");
         CHECK(card != nullptr);
         if (card != nullptr) {
             esrfe::overlay::Form cardForm{h.platform, card};
@@ -344,7 +344,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             // Hide -> always show.
             click(card->ShowChip());
             CHECK(card->ShowChip().selected && !card->HideChip().selected);
-            // R125 is only on level 3: unticking it is refused.
+            // R133 is only on level 3: unticking it is refused.
             std::size_t level3 = 0;
             for (std::size_t i = 0; i < card->LevelCount(); ++i)
                 if (card->LevelBox(i).on) level3 = i;
@@ -358,7 +358,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             edit::ChangeSet changes;
             std::string why;
             CHECK(edit::Parse(saved, changes, why));
-            const edit::RuleChange* c125 = changes.Find("R125");
+            const edit::RuleChange* c125 = changes.Find("R133");
             CHECK(c125 != nullptr && c125->Field("activeInLevels") != nullptr && c125->Field("show") != nullptr);
             CHECK(card->ResetButton().visible);
             // Undo: back to Sully's.
@@ -366,8 +366,8 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             CHECK(card->HideChip().selected && !card->ResetButton().visible);
             cardForm.Paint(h.platform.canvas);
         }
-        // Items: untick one gem of R090.
-        card = openCard("R090");
+        // Items: untick one gem of R099.
+        card = openCard("R099");
         CHECK(card != nullptr);
         if (card != nullptr) {
             esrfe::overlay::Form cardForm{h.platform, card};
@@ -390,7 +390,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         data = h.view->Data();
         CHECK(data != nullptr && data->session != nullptr && data->session->IsCopy());
         if (data != nullptr) {
-            const int r090 = data->doc.FindRule("R090");
+            const int r090 = data->doc.FindRule("R099");
             CHECK(r090 >= 0 && data->changed[static_cast<std::size_t>(r090)]);
             CHECK(h.view->Title().find("(my version)") != std::string::npos || true);
         }
@@ -404,13 +404,13 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         bool switched = false;
         CHECK(session.Open(copyId, (user / "Sullys-QoL-Filter (my version).json").string(), h.source->folders, error));
         document::Value mine = document::Value::Array({document::Value::Integer(3), document::Value::Integer(4)});
-        session.SetField("R125", "activeInLevels", &mine);
+        session.SetField("R133", "activeInLevels", &mine);
         CHECK(session.Save(error, switched));
-        // The author's new version: R125 on level 2 only.
+        // The author's new version: R133 on level 2 only.
         document::Document updated;
         std::vector<document::Diag> diags;
         CHECK(document::Document::Parse(filterText, updated, diags));
-        CHECK(updated.SetField(updated.FindRule("R125"), "activeInLevels", document::Value::Array({document::Value::Integer(2)})));
+        CHECK(updated.SetField(updated.FindRule("R133"), "activeInLevels", document::Value::Array({document::Value::Integer(2)})));
         const std::string newer = updated.Text();
         CHECK(edit::WriteText((user / "QoL-Filter" / "Sullys-QoL-Filter.json").string(), newer));
         h.source->info.textHash += 1;
@@ -427,13 +427,13 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         edit::ChangeSet changes;
         CHECK(edit::Parse(saved, changes, error));
         CHECK(changes.baseHash == edit::Hash(newer));
-        CHECK(changes.Find("R125") != nullptr && changes.Find("R125")->Field("activeInLevels") != nullptr);
-        CHECK(changes.Find("R125")->Field("activeInLevels")->value == mine);
+        CHECK(changes.Find("R133") != nullptr && changes.Find("R133")->Field("activeInLevels") != nullptr);
+        CHECK(changes.Find("R133")->Field("activeInLevels")->value == mine);
         std::string copyText;
         CHECK(edit::ReadText((user / "Sullys-QoL-Filter (my version).json").string(), copyText));
         document::Document copy;
         CHECK(document::Document::Parse(copyText, copy, diags));
-        CHECK(*copy.Rules()[static_cast<std::size_t>(copy.FindRule("R125"))].value.Find("activeInLevels") == mine);
+        CHECK(*copy.Rules()[static_cast<std::size_t>(copy.FindRule("R133"))].value.Find("activeInLevels") == mine);
         // Shown again: nothing more to ask.
         h.source->info.textHash += 1;
         h.Show();
@@ -506,32 +506,32 @@ int main(int argc, char** argv) {
                 actions[Action::Rename], other, rawCodes);
     CHECK(other == 0);
 
-    // R704: superior helms with +1 to Maximum Curses.
-    if (byId.count("R704")) {
-        const RuleSummary& s = byId["R704"];
+    // R068: superior helms with +1 to Maximum Curses.
+    if (byId.count("R068")) {
+        const RuleSummary& s = byId["R068"];
         CHECK(s.action == Action::Show);
         CHECK(s.what == "Helm");
         CHECK(Has(s.conditions, "Superior"));
         CHECK(Has(s.conditions, "Maximum Curses"));
         CHECK(Has(s.effects, "Chat message"));
     }
-    // R125: hides rvs outside towns on level 3.
-    if (byId.count("R125")) {
-        const RuleSummary& s = byId["R125"];
+    // R133: hides rvs outside towns on level 3.
+    if (byId.count("R133")) {
+        const RuleSummary& s = byId["R133"];
         CHECK(s.action == Action::Hide);
         CHECK(Has(s.conditions, "Outside towns"));
         CHECK(s.levels.size() == 1 && s.levels[0] == 3);
         CHECK(Has(s.conditions, "Very-Strict"));
     }
-    // R720: a crystal's game name without the item level.
-    if (byId.count("R720")) {
-        const RuleSummary& s = byId["R720"];
+    // R243: a crystal's game name without the item level.
+    if (byId.count("R243")) {
+        const RuleSummary& s = byId["R243"];
         CHECK(s.action == Action::Rename);
         CHECK(!s.preview.empty() && s.preview.find('{') == std::string::npos);
     }
     // A coupon label keeps its colour codes in the preview.
-    if (byId.count("R574")) {
-        CHECK(byId["R574"].preview.find("Ravenlore") != std::string::npos);
+    if (byId.count("R606")) {
+        CHECK(byId["R606"].preview.find("Ravenlore") != std::string::npos);
     }
 
     // The lists.
