@@ -3,6 +3,8 @@
     python3 lint.py <filter.json> <data dir>
 
 - Every rule title is "R### | what it does | action", and every R### is used once.
+  U### ids belong to players' own rules (added by the editor) and never appear
+  in the base filter.
 - A list of item codes that holds Mythical bases holds all of them (or all the
   Mythical weapons, for a weapons-only rule), and never 7wd, which is an
   ordinary elite sword despite its name.
@@ -46,6 +48,9 @@ def main():
     ids = {}
     for n, rule in enumerate(filt["rules"], 1):
         title = rule.get("comment", "")
+        if re.match(r"^U\d+ \|", title):
+            problems.append(f"rule {n}: {title[:5]} is a player rule id (U###); the base filter only uses R###")
+            continue
         m = re.match(r"^(R\d{3,}) \| .+ \| .+$", title)
         if not m:
             problems.append(f"rule {n}: title is not 'R### | what | action': {title[:80]!r}")
