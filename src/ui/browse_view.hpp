@@ -68,14 +68,20 @@ public:
     // For tests.
     [[nodiscard]] auto Data() const -> const Loaded* { return loaded_.get(); }
     [[nodiscard]] auto ShownRules() const -> const std::vector<int>& { return shown_; }
-    [[nodiscard]] auto SectionRows() const -> int { return static_cast<int>(sections_.size()); }
+    [[nodiscard]] auto SectionRows() const -> int { return static_cast<int>(rows_.size()); }  // rows showing
+    [[nodiscard]] auto SectionCount() const -> int { return static_cast<int>(sections_.size()); }  // all of them
+    [[nodiscard]] auto RowName(int row) const -> std::string;
+    [[nodiscard]] auto RowIsPart(int row) const -> bool;
+    [[nodiscard]] auto RowExpanded(int row) const -> bool;
+    [[nodiscard]] auto WhatShown(int shownIndex) const -> const std::string&;
     [[nodiscard]] auto Message() const -> const std::string& { return message_.text; }
     auto Search() -> overlay::TextBox& { return search_; }
     auto Sections() -> overlay::ListView& { return sectionList_; }
     auto Rules() -> overlay::ListView& { return ruleList_; }
     auto Levels() -> overlay::Dropdown& { return level_; }
     auto GameSettings() -> overlay::Button& { return gameSettings_; }
-    void ChooseSection(int row);
+    void ChooseSection(int row);  // a row of the left list, as showing
+    void ToggleRow(int row);      // opens or closes a part
 
 private:
     struct SectionRow {
@@ -83,9 +89,13 @@ private:
         bool part = false;
         int count = 0;
         std::string name;
+        int parent = -1;        // a section's part (sections_ index), -1 when none
+        bool expanded = false;  // a part: its sections show
+        int matches = 0;        // rules that match the search
     };
 
     void Rebuild();          // sections, level choices and the rule list from loaded_
+    void RebuildRows();      // rows_ from the parts that are open and the search
     void Refilter();         // shown_ from the section, the search and the level
     void OpenRule(int shownIndex, Ui& ui);
     [[nodiscard]] auto ActiveOnLevel(int rule) const -> bool;
@@ -98,8 +108,10 @@ private:
     bool gameWasMissing_ = true;  // the data was not there at the last refresh
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);  // false once the view is gone (answers still on the way)
     std::vector<SectionRow> sections_;
-    int section_ = 0;
+    std::vector<int> rows_;   // the left list's rows: sections_ indices
+    int section_ = 0;         // the chosen one, a sections_ index
     std::vector<int> shown_;
+    std::vector<std::string> whatShown_;  // per shown_ rule: its items, the ones the search found first
     overlay::Highlight highlight_;
 
     overlay::TextBox search_;

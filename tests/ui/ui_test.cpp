@@ -140,7 +140,17 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     CHECK(data != nullptr && data->parsed);
     if (data == nullptr || !data->parsed) return;
     const document::Document& doc = data->doc;
-    CHECK(h.view->SectionRows() == 1 + static_cast<int>(doc.Headings().size()));
+    {
+        // Parts start closed: "All rules", the parts, and sections that are in no part.
+        int parts = 0, loose = 0;
+        for (const document::Heading& hd : doc.Headings()) {
+            if (hd.level == document::Level::Part) ++parts;
+            else if (hd.part < 0) ++loose;
+        }
+        CHECK(h.view->SectionCount() == 1 + static_cast<int>(doc.Headings().size()));
+        CHECK(h.view->SectionRows() == 1 + parts + loose);
+        for (int row = 1; row < h.view->SectionRows(); ++row) CHECK(!h.view->RowExpanded(row));
+    }
     CHECK(static_cast<int>(h.view->ShownRules().size()) == doc.ActiveCount());
     CHECK(h.Drew("Always show") && h.Drew("R001"));
     CHECK(h.view->Title().find("QoL") != std::string::npos);
@@ -162,18 +172,39 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     const int r125 = RuleIndex(data->doc, "R125");
     CHECK(r125 >= 0);
 
-    // A section.
-    int mythicals = -1;
-    for (int i = 0; i < static_cast<int>(data->doc.Headings().size()); ++i)
-        if (data->doc.Headings()[static_cast<std::size_t>(i)].name == "Mythicals") { mythicals = i; break; }
-    CHECK(mythicals >= 0);
-    h.view->ChooseSection(mythicals + 1);
-    const auto& heading = data->doc.Headings()[static_cast<std::size_t>(mythicals)];
-    CHECK(static_cast<int>(h.view->ShownRules().size()) == heading.endRule - heading.firstRule);
-    // LB / RB move between sections.
-    h.form.PadPress(esrfe::overlay::PadEvent{esrfe::overlay::pad::Button::RB, false});
-    CHECK(static_cast<int>(h.view->ShownRules().size()) != heading.endRule - heading.firstRule || heading.endRule == heading.firstRule);
-    h.view->ChooseSection(0);
+    // A part opens with a click and shows its sections; a section shows its rules.
+    {
+        const auto rowOf = [&h](const std::string& name) {
+            for (int row = 0; row < h.view->SectionRows(); ++row)
+                if (h.view->RowName(row) == name) return row;
+            return -1;
+        };
+        const int protection = rowOf("Protection");
+        CHECK(protection > 0 && h.view->RowIsPart(protection));
+        CHECK(rowOf("Mythicals") < 0);  // closed
+        const int before = h.view->SectionRows();
+        h.view->ToggleRow(protection);
+        CHECK(h.view->RowExpanded(protection));
+        CHECK(h.view->SectionRows() > before);
+        const int mythicals = rowOf("Mythicals");
+        CHECK(mythicals == protection + 1);
+        h.view->ChooseSection(mythicals);
+        int heading = -1;
+        for (int i = 0; i < static_cast<int>(data->doc.Headings().size()); ++i)
+            if (data->doc.Headings()[static_cast<std::size_t>(i)].name == "Mythicals") { heading = i; break; }
+        const auto& hd = data->doc.Headings()[static_cast<std::size_t>(heading)];
+        CHECK(static_cast<int>(h.view->ShownRules().size()) == hd.endRule - hd.firstRule);
+        // Closing the part while one of its sections is chosen chooses the part.
+        h.view->ToggleRow(protection);
+        CHECK(h.view->SectionRows() == before);
+        CHECK(h.view->Sections().Selected() == protection);
+        const auto& part = data->doc.Headings()[static_cast<std::size_t>(hd.part)];
+        CHECK(static_cast<int>(h.view->ShownRules().size()) == part.endRule - part.firstRule);
+        // LB / RB move between the rows that show.
+        h.form.PadPress(esrfe::overlay::PadEvent{esrfe::overlay::pad::Button::RB, false});
+        CHECK(h.view->Sections().Selected() == protection + 1);
+        h.view->ChooseSection(0);
+    }
 
     // The search.
     h.form.Focus(&h.view->Search());
@@ -182,6 +213,25 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     for (int r : h.view->ShownRules()) found = found || data->doc.Rules()[static_cast<std::size_t>(r)].id == "R704";
     CHECK(found);
     CHECK(h.view->ShownRules().size() < 10);
+    // Only rules whose own words have the search: every one shown says "Maximum Curses" somewhere.
+    for (int r : h.view->ShownRules()) {
+        const RuleSummary& rs = data->rules[static_cast<std::size_t>(r)];
+        std::string all = rs.what;
+        for (const std::string& c : rs.conditions) all += c;
+        for (const std::string& e : rs.effects) all += e;
+        CHECK(all.find("Maximum Curses") != std::string::npos);
+    }
+    // Rows without a match are gone from the left; the ones left count matches.
+    CHECK(h.view->SectionRows() < 1 + 10);
+    // A search for one item of a long list puts it first in the row.
+    h.view->Search().SetValue("");
+    h.Type("zod");
+    bool zodFirst = false;
+    for (int i = 0; i < static_cast<int>(h.view->ShownRules().size()); ++i)
+        if (h.view->WhatShown(i).rfind("Zod Rune", 0) == 0) zodFirst = true;
+    CHECK(zodFirst);
+    h.view->Search().SetValue("");
+    h.Type("maximum curses");
     h.Paint();
     CHECK(h.platform.canvas.highlightedTexts > 0);
 

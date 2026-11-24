@@ -408,7 +408,9 @@ std::unique_ptr<ov::Overlay> Window;
 std::filesystem::path      PluginDir;   // the folder with this DLL (<mod>\d2rloader\plugins)
 std::filesystem::path      DataDir;     // PluginDir\esr-filter-editor: images, locales
 std::string                Locale;      // the loader's language code, "" for English
-std::atomic<bool>          PassNativeLootFilter{};  // let the next OpenLootFilter through to the game
+// OpenLootFilter messages pass to the game until this time (GetTickCount64), after the editor sent one: the game
+// may send it on again while its screen opens, and none of those should bring the editor back.
+std::atomic<std::uint64_t> PassNativeUntil{};
 
 auto ThisDllFolder() -> std::filesystem::path {
     HMODULE module = nullptr;
@@ -554,6 +556,7 @@ void StartWindow() {
     config.dataDir = DataDir;
     config.title = "Loot Filter Editor";
     config.keyboardLocale = Locale;
+    config.theme.keyboardHelp = false;  // no key legend under the window
     config.isCloseKey = &MatchesOpenKey;
     config.queueGameUi = ov::GameThreadQueue(Context, ThreadsSvc, ov::GameThread::Ui);
     config.queueGameLogic = ov::GameThreadQueue(Context, ThreadsSvc, ov::GameThread::Game);
@@ -620,10 +623,12 @@ auto __cdecl DemoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* 
 // Opens the game's own loot filter screen, which the pause menu's Loot Filter button now leaves to the editor.
 void __cdecl DoOpenNativeLootFilter(const D2RL::PluginContext*, void*) noexcept {
     if (WidgetsSvc == nullptr) return;
-    PassNativeLootFilter.store(true);
+    PassNativeUntil.store(GetTickCount64() + 1500);
     const D2RL::Widgets::UiAction action{ D2RL::Widgets::UiActionSize, 0, "PausePanelMessage", "OpenLootFilter", "" };
-    if (WidgetsSvc->dispatchUiAction(Context, &action) != D2RL::Widgets::Result::Success) {
-        PassNativeLootFilter.store(false);
+    const auto result = WidgetsSvc->dispatchUiAction(Context, &action);
+    LogInfo("Loot Filter Editor: asked the game to open its loot filter screen (result " + Number(static_cast<uint32_t>(result)) + ").");
+    if (result != D2RL::Widgets::Result::Success) {
+        PassNativeUntil.store(0);
         LogWarn("Loot Filter Editor: the game's loot filter screen could not be opened.");
     }
 }
@@ -717,8 +722,12 @@ auto __cdecl OnUiMessage(const D2RL::PluginContext*, const D2RL::SharedEvents::U
     // The pause menu's Loot Filter button opens the editor instead of the game's screen.
     if (event != nullptr && event->target != nullptr && event->command != nullptr
         && std::strcmp(event->target, "PausePanelMessage") == 0 && std::strcmp(event->command, "OpenLootFilter") == 0) {
-        if (PassNativeLootFilter.exchange(false)) return D2RL::SharedEvents::UiMessageAction::Continue;
+        if (GetTickCount64() < PassNativeUntil.load()) {
+            LogInfo("Loot Filter Editor: OpenLootFilter passed to the game.");
+            return D2RL::SharedEvents::UiMessageAction::Continue;
+        }
         if (Window) {
+            LogInfo("Loot Filter Editor: OpenLootFilter opens the editor.");
             Window->Open();
             return D2RL::SharedEvents::UiMessageAction::Consume;
         }

@@ -76,11 +76,6 @@ RuleView::RuleView(std::shared_ptr<const Loaded> loaded, int rule) : loaded_(std
         }
         canvas.PopClip();
     };
-    lines_.rowTooltip = [this](int index) -> std::string {
-        if (index < 0 || index >= static_cast<int>(content_.size())) return {};
-        return overlay::StripColorCodes(content_[static_cast<std::size_t>(index)].text);
-    };
-
     back_.label = "< Back";
     back_.onClick = [](Ui& ui) { ui.PopView(); };
 }

@@ -889,6 +889,7 @@ auto ListView::Mouse(const MouseEvent& event, Ui& ui) -> bool {
         if (row >= 0 && RowBox(row).Contains(event.x, event.y)) {
             Select(row, &ui);
             if (event.clicks >= 2 && onActivate) onActivate(row, ui);
+            else if (event.clicks < 2 && onClick) onClick(row, ui);
         }
         return true;
     }

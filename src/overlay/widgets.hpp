@@ -264,6 +264,7 @@ public:
     std::function<void(Canvas&, int, const Box&, const RowState&)> paintRow;
     std::function<void(int, Ui&)> onSelect;    // the selection moved (mouse, keys, controller)
     std::function<void(int, Ui&)> onActivate;  // Enter, A, or a double click
+    std::function<void(int, Ui&)> onClick;     // a single click on a row (after it is selected)
     std::function<std::string(int)> rowTooltip;
     bool drawRowBackground = true;  // the wiki's row: corner shadow, dark fill, gold frame when selected
 

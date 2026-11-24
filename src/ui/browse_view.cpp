@@ -78,8 +78,13 @@ auto Load(Source& source, const FilterInfo& info, std::shared_ptr<const gamedata
     loaded->search.reserve(rules.size());
     for (const document::Rule& rule : rules) {
         RuleSummary summary = Describe(rule.value, context);
-        loaded->search.push_back(overlay::text::SearchTextUtf8(
-            overlay::StripColorCodes(summary.search + rule.id + "\n" + rule.title + "\n" + loaded->Place(static_cast<int>(loaded->rules.size())))));
+        // Only what the player sees in the list and on the card: a rule found for a word they cannot see looks wrong.
+        std::string words = summary.actionLabel + "\n" + rule.id + "\n";
+        for (const std::string& n : summary.whatAll) words += n + "\n";
+        for (const std::string& c : summary.conditions) words += c + "\n";
+        for (const std::string& e : summary.effects) words += e + "\n";
+        if (summary.whatAll.empty()) words += summary.what + "\n";
+        loaded->search.push_back(overlay::text::SearchTextUtf8(overlay::StripColorCodes(words)));
         loaded->rules.push_back(std::move(summary));
     }
     return loaded;
@@ -90,10 +95,10 @@ auto Load(Source& source, const FilterInfo& info, std::shared_ptr<const gamedata
 BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(source)) {
     search_.search = true;
     search_.placeholder = "Search the rules: an item, a stat, a word…";
-    search_.tooltip = "Words must all be found; \"quoted words\" together; -word leaves rules out.";
     search_.onChange = [this](const std::string& text, Ui& ui) {
         highlight_ = overlay::MakeHighlight(text);
         Refilter();
+        RebuildRows();
         ruleList_.SetCount(static_cast<int>(shown_.size()));
         ruleList_.Select(shown_.empty() ? -1 : 0, nullptr);
         ruleList_.SetScroll(0);
@@ -106,8 +111,6 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
     levelLabel_.text = "Level";
     levelLabel_.font = Font::Small;
     level_.translate = false;
-    level_.tooltip = "The rules on this filter level. Rules for other levels are greyed out. "
-                     "The game's loot filter settings choose the level the game uses.";
     level_.onChange = [this](int, Ui& ui) {
         Refilter();
         ruleList_.SetCount(static_cast<int>(shown_.size()));
@@ -115,7 +118,6 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
     };
 
     gameSettings_.label = "Game loot filter settings";
-    gameSettings_.tooltip = "The game's own loot filter screen: choose the filter and its level, Show Hidden Items.";
     gameSettings_.onClick = [this](Ui&) { source_->OpenGameSettings(); };
 
     info_.translate = false;
@@ -129,12 +131,23 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
         ChooseSection(index);
         ui.Repaint();
     };
-    sectionList_.onActivate = [this](int, Ui& ui) {
-        if (!shown_.empty()) ui.Focus(&ruleList_);
+    sectionList_.onClick = [this](int index, Ui& ui) {  // a click on a part opens or closes it
+        if (RowIsPart(index)) {
+            ToggleRow(index);
+            ui.Repaint();
+        }
+    };
+    sectionList_.onActivate = [this](int index, Ui& ui) {  // Enter / A: a part opens or closes, a section goes to its rules
+        if (RowIsPart(index)) {
+            ToggleRow(index);
+            ui.Repaint();
+        } else if (!shown_.empty()) {
+            ui.Focus(&ruleList_);
+        }
     };
     sectionList_.rowTooltip = [this](int index) -> std::string {
-        if (!loaded_ || index < 0 || index >= static_cast<int>(sections_.size())) return {};
-        const SectionRow& row = sections_[static_cast<std::size_t>(index)];
+        if (!loaded_ || index < 0 || index >= static_cast<int>(rows_.size())) return {};
+        const SectionRow& row = sections_[static_cast<std::size_t>(rows_[static_cast<std::size_t>(index)])];
         if (row.heading < 0) return {};
         const auto& h = loaded_->doc.Headings()[static_cast<std::size_t>(row.heading)];
         return h.description.empty() ? std::string{} : h.description;
@@ -147,19 +160,6 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
     ruleList_.emptyText = "No rules match";
     ruleList_.paintRow = [this](Canvas& c, int i, const Box& row, const overlay::ListView::RowState& s) { PaintRuleRow(c, i, row, s); };
     ruleList_.onActivate = [this](int index, Ui& ui) { OpenRule(index, ui); };
-    ruleList_.rowTooltip = [this](int index) -> std::string {
-        if (!loaded_ || index < 0 || index >= static_cast<int>(shown_.size())) return {};
-        const int r = shown_[static_cast<std::size_t>(index)];
-        const RuleSummary& s = loaded_->rules[static_cast<std::size_t>(r)];
-        std::string tip = s.actionLabel + ": " + overlay::StripColorCodes(s.what);
-        for (const std::string& c : s.conditions) tip += "\n  " + c;
-        for (const std::string& e : s.effects) tip += "\n  " + overlay::StripColorCodes(e);
-        const std::string& title = loaded_->doc.Rules()[static_cast<std::size_t>(r)].title;
-        if (!title.empty()) tip += "\n\n" + title;
-        if (!ActiveOnLevel(r)) tip += "\n\n" + UiText("Not used on this filter level.");
-        return tip;
-    };
-
     message_.translate = false;
     message_.flags = kCenter | kVCenter;
 }
@@ -238,17 +238,30 @@ void BrowseView::Apply(const FilterInfo& info, bool force) {
 }
 
 void BrowseView::Rebuild() {
+    // The open parts and the chosen row stay open and chosen when the same filter is read again.
+    std::vector<std::string> open;
+    for (const SectionRow& row : sections_)
+        if (row.part && row.expanded) open.push_back(row.name);
+    const int chosenHeading = section_ >= 0 && section_ < static_cast<int>(sections_.size()) ? sections_[static_cast<std::size_t>(section_)].heading : -1;
+
     sections_.clear();
     const document::Document& doc = loaded_->doc;
     sections_.push_back(SectionRow{-1, false, doc.ActiveCount(), UiText("All rules")});
     const auto& headings = doc.Headings();
+    int part = -1;
+    section_ = 0;
     for (int h = 0; h < static_cast<int>(headings.size()); ++h) {
         const document::Heading& heading = headings[static_cast<std::size_t>(h)];
-        sections_.push_back(SectionRow{h, heading.level == document::Level::Part, heading.endRule - heading.firstRule, heading.name});
+        SectionRow row{h, heading.level == document::Level::Part, heading.endRule - heading.firstRule, heading.name};
+        if (row.part) {
+            part = static_cast<int>(sections_.size());
+            row.expanded = std::find(open.begin(), open.end(), row.name) != open.end();  // closed to start with
+        } else {
+            row.parent = heading.part >= 0 ? part : -1;
+        }
+        if (h == chosenHeading) section_ = static_cast<int>(sections_.size());
+        sections_.push_back(std::move(row));
     }
-    if (section_ >= static_cast<int>(sections_.size())) section_ = 0;
-    sectionList_.SetCount(static_cast<int>(sections_.size()));
-    sectionList_.Select(section_, nullptr);
 
     // The level choices: every level, then the filter's own; the game's level chosen to start with.
     const std::int64_t chosen = level_.selected > 0 && !loaded_->info.levels.empty() ? ChosenLevel() : loaded_->info.level;
@@ -265,8 +278,77 @@ void BrowseView::Rebuild() {
     levelLabel_.visible = level_.visible;
 
     Refilter();
+    RebuildRows();
     ruleList_.SetCount(static_cast<int>(shown_.size()));
     if (ruleList_.Selected() < 0 && !shown_.empty()) ruleList_.Select(0, nullptr);
+}
+
+void BrowseView::RebuildRows() {
+    // With a search, every row counts its matches and rows without any are left out.
+    const overlay::text::ParsedQuery query = overlay::text::ParseQuery(search_.Value());
+    const bool searching = !query.empty();
+    if (searching && loaded_) {
+        std::vector<char> hit(static_cast<std::size_t>(loaded_->doc.ActiveCount()), 0);
+        for (int r = 0; r < loaded_->doc.ActiveCount(); ++r)
+            hit[static_cast<std::size_t>(r)] = overlay::text::Matches(query, loaded_->search[static_cast<std::size_t>(r)]) ? 1 : 0;
+        for (SectionRow& row : sections_) {
+            int first = 0, end = loaded_->doc.ActiveCount();
+            if (row.heading >= 0) {
+                const auto& h = loaded_->doc.Headings()[static_cast<std::size_t>(row.heading)];
+                first = h.firstRule;
+                end = h.endRule;
+            }
+            row.matches = 0;
+            for (int r = first; r < end; ++r) row.matches += hit[static_cast<std::size_t>(r)];
+        }
+    }
+    rows_.clear();
+    for (int i = 0; i < static_cast<int>(sections_.size()); ++i) {
+        const SectionRow& row = sections_[static_cast<std::size_t>(i)];
+        if (searching && row.matches == 0 && i != section_) continue;
+        if (row.parent >= 0 && !sections_[static_cast<std::size_t>(row.parent)].expanded && i != section_) continue;
+        rows_.push_back(i);
+    }
+    sectionList_.SetCount(static_cast<int>(rows_.size()));
+    const auto at = std::find(rows_.begin(), rows_.end(), section_);
+    sectionList_.Select(at == rows_.end() ? -1 : static_cast<int>(at - rows_.begin()), nullptr);
+}
+
+auto BrowseView::RowName(int row) const -> std::string {
+    if (row < 0 || row >= static_cast<int>(rows_.size())) return {};
+    return sections_[static_cast<std::size_t>(rows_[static_cast<std::size_t>(row)])].name;
+}
+
+auto BrowseView::RowIsPart(int row) const -> bool {
+    if (row < 0 || row >= static_cast<int>(rows_.size())) return false;
+    return sections_[static_cast<std::size_t>(rows_[static_cast<std::size_t>(row)])].part;
+}
+
+auto BrowseView::RowExpanded(int row) const -> bool {
+    if (row < 0 || row >= static_cast<int>(rows_.size())) return false;
+    return sections_[static_cast<std::size_t>(rows_[static_cast<std::size_t>(row)])].expanded;
+}
+
+void BrowseView::ToggleRow(int row) {
+    if (!RowIsPart(row)) return;
+    const int index = rows_[static_cast<std::size_t>(row)];
+    SectionRow& part = sections_[static_cast<std::size_t>(index)];
+    part.expanded = !part.expanded;
+    // A section of a part that closes is no longer chosen: its part is.
+    if (!part.expanded && section_ >= 0 && sections_[static_cast<std::size_t>(section_)].parent == index) {
+        section_ = index;
+        Refilter();
+        ruleList_.SetCount(static_cast<int>(shown_.size()));
+        ruleList_.Select(shown_.empty() ? -1 : 0, nullptr);
+        ruleList_.SetScroll(0);
+    }
+    RebuildRows();
+}
+
+auto BrowseView::WhatShown(int shownIndex) const -> const std::string& {
+    static const std::string none;
+    if (shownIndex < 0 || shownIndex >= static_cast<int>(whatShown_.size())) return none;
+    return whatShown_[static_cast<std::size_t>(shownIndex)];
 }
 
 auto BrowseView::ChosenLevel() const -> std::int64_t {
@@ -284,8 +366,8 @@ auto BrowseView::ActiveOnLevel(int rule) const -> bool {
 }
 
 void BrowseView::ChooseSection(int row) {
-    if (row < 0 || row >= static_cast<int>(sections_.size())) return;
-    section_ = row;
+    if (row < 0 || row >= static_cast<int>(rows_.size())) return;
+    section_ = rows_[static_cast<std::size_t>(row)];
     sectionList_.Select(row, nullptr);
     Refilter();
     ruleList_.SetCount(static_cast<int>(shown_.size()));
@@ -304,8 +386,26 @@ void BrowseView::Refilter() {
         end = h.endRule;
     }
     const overlay::text::ParsedQuery query = overlay::text::ParseQuery(search_.Value());
+    whatShown_.clear();
     for (int r = first; r < end; ++r) {
-        if (query.empty() || overlay::text::Matches(query, loaded_->search[static_cast<std::size_t>(r)])) shown_.push_back(r);
+        if (!query.empty() && !overlay::text::Matches(query, loaded_->search[static_cast<std::size_t>(r)])) continue;
+        shown_.push_back(r);
+        const RuleSummary& s = loaded_->rules[static_cast<std::size_t>(r)];
+        if (query.empty() || s.whatAll.size() <= 3) {
+            whatShown_.push_back(s.what);
+            continue;
+        }
+        // The items the search found go first, so the row shows why it matched ("Ber Rune, ... and 12 more").
+        std::vector<std::string> found, rest;
+        for (const std::string& name : s.whatAll) {
+            const std::string folded = overlay::text::SearchTextUtf8(name);
+            bool any = false;
+            for (const overlay::text::QueryTerm& term : query.terms)
+                if (!term.excluded && overlay::text::HasTerm(folded, term)) any = true;
+            (any ? found : rest).push_back(name);
+        }
+        found.insert(found.end(), rest.begin(), rest.end());
+        whatShown_.push_back(JoinNames(found, 3));
     }
 }
 
@@ -367,7 +467,7 @@ void BrowseView::Layout(const LayoutContext& c) {
     sectionList_.box = Box{area.left, listsTop, area.left + leftWidth, area.bottom};
     sectionList_.rowHeight = std::max(m.S(24), m.LineHeight(Font::Bold) + m.S(8));
     sectionList_.rowGap = m.S(2);
-    sectionList_.SetCount(static_cast<int>(sections_.size()));
+    sectionList_.SetCount(static_cast<int>(rows_.size()));
 
     const int rulesLeft = sectionList_.box.right + gap;
     count_.box = Box{rulesLeft, listsTop, area.right, listsTop + m.S(20)};
@@ -391,12 +491,27 @@ void BrowseView::FocusList(std::vector<Widget*>& out) {
 void BrowseView::Paint(Canvas&) {}
 
 void BrowseView::PaintSectionRow(Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
-    if (index < 0 || index >= static_cast<int>(sections_.size())) return;
-    const SectionRow& s = sections_[static_cast<std::size_t>(index)];
+    if (index < 0 || index >= static_cast<int>(rows_.size())) return;
+    const SectionRow& s = sections_[static_cast<std::size_t>(rows_[static_cast<std::size_t>(index)])];
     const overlay::Theme& theme = canvas.GetTheme();
     const bool top = s.heading < 0 || s.part;
-    const int indent = top ? canvas.S(10) : canvas.S(24);
-    const std::string count = std::to_string(s.count);
+    const int indent = s.part ? canvas.S(26) : top ? canvas.S(10) : canvas.S(34);
+    if (s.part) {  // an arrow: right when closed, down when open
+        const int size = canvas.S(8);
+        const int x = row.left + canvas.S(10);
+        const int y = row.CentreY();
+        for (int i = 0; i < size; ++i) {
+            if (s.expanded) {  // down: rows get narrower
+                const int half = (size - i) / 2;
+                canvas.Fill(Box{x + size / 2 - half, y - size / 4 + i / 2, x + size / 2 + half, y - size / 4 + i / 2 + 1}, theme.gold);
+            } else {           // right: columns get shorter
+                const int half = (size - i) / 2;
+                canvas.Fill(Box{x + i / 2, y - half, x + i / 2 + 1, y + half}, theme.gold);
+            }
+        }
+    }
+    const bool searching = !search_.Value().empty();
+    const std::string count = searching ? std::to_string(s.matches) : std::to_string(s.count);
     const int countWidth = canvas.TextWidth(count, Font::Small) + canvas.S(10);
     const Box text{row.left + indent, row.top, row.right - countWidth - canvas.S(4), row.bottom};
     canvas.PushClip(text);
@@ -431,7 +546,7 @@ void BrowseView::PaintRuleRow(Canvas& canvas, int index, const Box& row, const o
     canvas.SetHighlight(&highlight_);
     const Box what{left, row.top + canvas.S(4), row.right - idWidth - pad, split};
     canvas.PushClip(what);
-    canvas.Text(s.what, what, active ? theme.text : theme.dim, Font::Bold, kSingleLine);
+    canvas.Text(WhatShown(index), what, active ? theme.text : theme.dim, Font::Bold, kSingleLine);
     canvas.PopClip();
     std::string line;
     if (!active) line = UiText("Not on this level") + "  ·  ";
@@ -469,9 +584,10 @@ auto BrowseView::Pad(const overlay::PadEvent& event, Ui& ui) -> bool {
     if (empty_) return false;
     if (event.button == overlay::pad::Button::LB || event.button == overlay::pad::Button::RB) {
         const int step = event.button == overlay::pad::Button::LB ? -1 : 1;
-        const int rows = static_cast<int>(sections_.size());
+        const int rows = static_cast<int>(rows_.size());
         if (rows == 0) return true;
-        ChooseSection((section_ + step + rows) % rows);
+        const int row = std::max(0, sectionList_.Selected());
+        ChooseSection((row + step + rows) % rows);
         ui.Repaint();
         return true;
     }
