@@ -1,10 +1,10 @@
-# Loot Filter Editor, a D2RLoader plugin (milestone 1).
+# ESR Filter Editor, a D2RLoader plugin.
 #
-#   cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+#   cmake -S . -B build -G "Visual Studio 18 2026" -A x64
 #   cmake --build build --config Release
 #
 # Copy the DLL into your mod while building:
-#   cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DD2R_MOD_DIR="F:/Diablo II Resurrected/mods/<YourMod>"
+#   cmake -S . -B build -G "Visual Studio 18 2026" -A x64 -DD2R_MOD_DIR="F:/Diablo II Resurrected/mods/<YourMod>"
 #
 cmake_minimum_required(VERSION 3.29)
 project(d2rl-loot-filter-editor LANGUAGES CXX RC)
@@ -33,13 +33,19 @@ set(BUILD_TESTING OFF)
 set(D2RLPLUGIN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory("${D2RL_SDK_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/d2rl-sdk")
 
+# The editor's parts (see docs/ARCHITECTURE.md). document and gamedata are plain C++;
+# overlay's window host is Windows only.
+add_subdirectory(src/document)
+add_subdirectory(src/gamedata)
+add_subdirectory(src/overlay)
+
 set(target d2rl-sully-loot-filter-editor)
 add_library(${target} SHARED
     src/plugin.cpp
     src/plugin.rc)
 
 target_include_directories(${target} PRIVATE "${LOOT_FILTER_SRC_DIR}")
-target_link_libraries(${target} PRIVATE D2RLPlugin::D2RLPlugin)
+target_link_libraries(${target} PRIVATE D2RLPlugin::D2RLPlugin overlay document gamedata)
 
 set_target_properties(${target} PROPERTIES
     PREFIX ""

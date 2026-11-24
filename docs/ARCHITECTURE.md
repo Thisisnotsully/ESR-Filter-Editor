@@ -29,6 +29,18 @@ the loaded filter's state. It is the only link to the loot filter.
   plain copies. `document` and `gamedata` objects belong to the overlay thread.
 - The editor never changes the loot filter's behaviour: it edits files, and
   the loot filter's file watcher reloads them.
+- No `disabledRules` in files the game loads: the loot filter warns about
+  unknown top-level settings. A rule the player switches off is left out of
+  the merged copy (downloaded filters), or listed in a small file next to the
+  filter (filters the player made). Files that already have `disabledRules`
+  (the web editor's scheme) are still read, those rules shown as off.
+- The plugin's data folder is `<mod>\d2rloader\plugins\esr-filter-editor`
+  (images, locales). The window's images are the game's own art and are not
+  kept in this repository; the install script copies them from the ESR Wiki's
+  installed folder.
+- The pause menu's Loot Filter button sends `PausePanelMessage:OpenLootFilter`;
+  the editor consumes it and opens its window. The editor can send the same
+  message on with a pass-through flag to open the game's own loot filter screen.
 - Where the mod's data lives: `<game>\mods\<mod>\<mod>.mpq\data\global\excel\*.txt`
   and `...\data\local\lng\strings\*.json` (ESR ships the mod as a folder).
 - Translations: the editor's own texts in `locales\<code>\ui-strings.txt`

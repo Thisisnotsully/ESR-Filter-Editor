@@ -1,4 +1,4 @@
-# Loot Filter Editor (milestone 1)
+# ESR Filter Editor (milestone 1)
 
 This is a small D2RLoader plugin for Diablo II Resurrected.
 It is the first step toward an in-game loot filter editor.
@@ -113,3 +113,18 @@ button (for example the pause menu's Loot Filter button), then run the command
 again to turn it off. The plugin log then has lines like
 `Loot Filter Editor: UI message PanelManager:OpenPanel:...`. Nothing is
 changed or blocked; the log only records what the game sends.
+
+## Milestone 2: the window (test build)
+
+Build and install with `build-and-install.bat` (game closed), then in game:
+
+- [ ] Bind "Open Filter Editor" in Controls (group Loot Filter). The key opens the window; the key or Escape closes it.
+- [ ] The pause menu's **Loot Filter** button opens the window instead of the game's screen.
+- [ ] `lfeditor-gamefilter` in the console opens the game's own loot filter screen.
+- [ ] The demo window: the list of 1000 rows scrolls (wheel, touchpad), the search box filters it, toggles, the drop-down, the number box (-/+, typing) and the confirm dialog work with the mouse and the keyboard.
+- [ ] With a controller: the D-pad reaches every control, the left stick moves the cursor and A clicks, the on-screen keyboard types into the search box, B goes back, the help window shows the buttons. Xbox and PlayStation if you have both.
+- [ ] The window follows the game window (move, resize, minimise, alt-tab), and looks right at your display scaling.
+- [ ] While the window is open the game ignores the controller (the log says "controller block installed").
+- [ ] `lfeditor-selftest` in the console: the filter is "read" and "saved back byte for byte", and the mod data is "read", with the times.
+
+Send the console lines and the plugin log lines starting with `Loot Filter Editor:`.

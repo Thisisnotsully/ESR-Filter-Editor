@@ -7,13 +7,38 @@
 // The bridge is a service the loot filter plugin offers. This file only uses
 // the contract in editor_bridge_api.h.
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 #include <D2RLPlugin/api.h>
+#include <D2RLPlugin/threads.h>
+#include <D2RLPlugin/widgets.h>
 #include <D2RLPlugin/plugin_communication.h>
 #include <D2RLPlugin/shared_events.h>
 
 #include <editor_bridge_api.h>
 
+#include "document.h"
+#include "gamedata.h"
+#include "overlay.hpp"
+#include "debug_log.hpp"
+#include "demo_view.hpp"
+#include "game_thread.hpp"
+#include "input_block.hpp"
+#include "ui_text.hpp"
+
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <sstream>
 #include <vector>
 #include <cstdint>
 #include <cstdio>
@@ -368,6 +393,197 @@ auto __cdecl EditorCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext
 }
 
 // ---------------------------------------------------------------------------
+//  The editor window (milestone 2: the overlay with its demo view)
+// ---------------------------------------------------------------------------
+namespace ov = esrfe::overlay;
+
+const D2RL::ThreadService* ThreadsSvc{};
+const D2RL::WidgetService* WidgetsSvc{};
+D2RL::Input::ActionHandle  OpenAction{ D2RL::Input::InvalidHandle };
+std::unique_ptr<ov::Overlay> Window;
+std::filesystem::path      PluginDir;   // the folder with this DLL (<mod>\d2rloader\plugins)
+std::filesystem::path      DataDir;     // PluginDir\esr-filter-editor: images, locales
+std::string                Locale;      // the loader's language code, "" for English
+std::atomic<bool>          PassNativeLootFilter{};  // let the next OpenLootFilter through to the game
+
+auto ThisDllFolder() -> std::filesystem::path {
+    HMODULE module = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(&ThisDllFolder), &module);
+    wchar_t path[MAX_PATH] = {};
+    GetModuleFileNameW(module, path, MAX_PATH);
+    return std::filesystem::path(path).parent_path();
+}
+
+auto GameFolder() -> std::filesystem::path {
+    wchar_t path[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
+    return std::filesystem::path(path).parent_path();
+}
+
+// <mod>\<mod>.mpq\data: ESR ships the mod as a folder, so its tables are plain files.
+auto ModDataFolder() -> std::filesystem::path {
+    const std::filesystem::path mod = PluginDir.parent_path().parent_path();
+    return mod / (mod.filename().string() + ".mpq") / "data";
+}
+
+// The open key, as bound in Controls. It closes the window again while the window has the keyboard.
+auto MatchesOpenKey(unsigned int virtualKey) -> bool {
+    if (InputSvc == nullptr || OpenAction == D2RL::Input::InvalidHandle) return false;
+    const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+    for (auto slot : { D2RL::Input::BindingSlot::Primary, D2RL::Input::BindingSlot::Secondary }) {
+        D2RL::Input::Binding binding{};
+        if (InputSvc->getBinding(Context, OpenAction, slot, &binding) != D2RL::Input::Result::Success) continue;
+        if (static_cast<unsigned int>(binding.key) != virtualKey) continue;
+        switch (binding.modifier) {
+            case D2RL::Input::Modifier::None:    if (!shift && !control && !alt) return true; break;
+            case D2RL::Input::Modifier::Shift:   if (shift && !control && !alt) return true; break;
+            case D2RL::Input::Modifier::Control: if (control && !shift && !alt) return true; break;
+            case D2RL::Input::Modifier::Alt:     if (alt && !shift && !control) return true; break;
+            default: break;
+        }
+    }
+    return false;
+}
+
+void StartWindow() {
+    if (ThreadsSvc == nullptr) {
+        LogWarn("Loot Filter Editor: no thread service; the window is unavailable.");
+        return;
+    }
+    ov::DebugSink() = [](const std::string& line) { LogInfo("Loot Filter Editor: " + line); };
+    Locale = ov::ReadLoaderLocale(GameFolder(), PluginDir);
+    ov::LoadUiStrings(ov::UiStringsPath(DataDir, Locale));
+    ov::OverlayConfig config;
+    config.dataDir = DataDir;
+    config.title = "Loot Filter Editor";
+    config.keyboardLocale = Locale;
+    config.isCloseKey = &MatchesOpenKey;
+    config.queueGameUi = ov::GameThreadQueue(Context, ThreadsSvc, ov::GameThread::Ui);
+    config.queueGameLogic = ov::GameThreadQueue(Context, ThreadsSvc, ov::GameThread::Game);
+    Window = std::make_unique<ov::Overlay>();
+    if (!Window->Start(config, [] { return std::make_shared<ov::DemoView>(); })) {
+        LogError("Loot Filter Editor: the window could not be created (see the lines above).");
+        Window.reset();
+        return;
+    }
+    if (ov::inputblock::Install([] { return Window != nullptr && Window->IsOpen(); })) {
+        LogInfo("Loot Filter Editor: controller block installed.");
+    } else {
+        LogWarn("Loot Filter Editor: controller block not installed (this game build does not match, or another plugin has it).");
+    }
+}
+
+void StopWindow() noexcept {
+    try {
+        ov::inputblock::Remove();
+        if (Window) Window->Stop();
+        Window.reset();
+    } catch (...) {
+    }
+}
+
+auto __cdecl OnOpenEditor(const D2RL::PluginContext*, const D2RL::Input::ActionEvent* event, void*) noexcept -> D2RL::Input::ActionResult {
+    if (event == nullptr || !D2RL::Input::HasActionEventField(event, D2RL::Input::ActionEventRequiredSize)
+        || event->kind != D2RL::Input::ActionEventKind::Pressed) {
+        return D2RL::Input::ActionResult::Ignored;
+    }
+    if (Window) Window->Toggle();
+    return D2RL::Input::ActionResult::Handled;
+}
+
+auto __cdecl OpenCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+    if (command == nullptr) return D2RL::ConsoleCommandResult::Failed;
+    if (!Window) {
+        Console("lfeditor-open: the window is unavailable (see the plugin log).");
+        return D2RL::ConsoleCommandResult::Handled;
+    }
+    Window->Toggle();
+    return D2RL::ConsoleCommandResult::Handled;
+}
+
+// Opens the game's own loot filter screen, which the pause menu's Loot Filter button now leaves to the editor.
+void __cdecl DoOpenNativeLootFilter(const D2RL::PluginContext*, void*) noexcept {
+    if (WidgetsSvc == nullptr) return;
+    PassNativeLootFilter.store(true);
+    const D2RL::Widgets::UiAction action{ D2RL::Widgets::UiActionSize, 0, "PausePanelMessage", "OpenLootFilter", "" };
+    if (WidgetsSvc->dispatchUiAction(Context, &action) != D2RL::Widgets::Result::Success) {
+        PassNativeLootFilter.store(false);
+        LogWarn("Loot Filter Editor: the game's loot filter screen could not be opened.");
+    }
+}
+
+auto __cdecl GameFilterCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+    if (command == nullptr) return D2RL::ConsoleCommandResult::Failed;
+    if (WidgetsSvc == nullptr || ThreadsSvc == nullptr) {
+        Console("lfeditor-gamefilter: unavailable (no widget or thread service).");
+        return D2RL::ConsoleCommandResult::Handled;
+    }
+    if (ThreadsSvc->runOnUiThread(Context, &DoOpenNativeLootFilter, nullptr) != D2RL::Threads::Result::Success) {
+        Console("lfeditor-gamefilter: could not be queued.");
+    }
+    return D2RL::ConsoleCommandResult::Handled;
+}
+
+// Milestone 2 check: reads the active filter and the mod's data from their real places, as the editor will.
+auto __cdecl SelfTestCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+    if (command == nullptr) return D2RL::ConsoleCommandResult::Failed;
+    try {
+        using Clock = std::chrono::steady_clock;
+        auto ms = [](Clock::time_point from) { return std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - from).count()); };
+        // The filter: its path from the loot filter, through the bridge.
+        if (AcquireBridge(false, nullptr) && Lease->getFilterState != nullptr) {
+            Bridge::FilterState state{};
+            state.structSize = sizeof(state);
+            if (Lease->getFilterState(&state) == Bridge::Result::Success && state.loaded != 0) {
+                const std::string pathText = Text(state.path);
+                std::filesystem::path path(std::u8string(pathText.begin(), pathText.end()));
+                std::ifstream file(path, std::ios::binary);
+                std::stringstream text;
+                text << file.rdbuf();
+                const std::string input = text.str();
+                const auto start = Clock::now();
+                document::Document doc;
+                std::vector<document::Diag> diags;
+                const bool ok = document::Document::Parse(input, doc, diags);
+                const std::string took = ms(start);
+                Console("Filter " + pathText + ": " + (ok ? "read" : "NOT read") + ", " + Number(static_cast<uint32_t>(doc.Rules().size()))
+                    + " rules, " + Number(static_cast<uint32_t>(input.size())) + " bytes, " + took + " ms, saved back "
+                    + (ok && doc.Text() == input ? "byte for byte" : "DIFFERENTLY") + ".");
+                for (std::size_t i = 0; i < diags.size() && i < 3; ++i) Console("  " + diags[i].message);
+            } else {
+                Console("Filter: no filter is loaded.");
+            }
+        } else {
+            Console("Filter: the loot filter's editor bridge is not available.");
+        }
+        // The mod's data.
+        const std::filesystem::path data = ModDataFolder();
+        gamedata::Language language = gamedata::Language::enUS;
+        if (!Locale.empty()) gamedata::ParseLanguage(Locale, language);
+        gamedata::GameData game;
+        std::vector<std::string> problems;
+        const auto start = Clock::now();
+        const bool loaded = gamedata::GameData::Load((data / "global" / "excel").string(), (data / "local" / "lng" / "strings").string(),
+                                                     language, game, problems);
+        Console("Mod data " + data.string() + ": " + (loaded ? "read" : "NOT read") + " in " + ms(start) + " ms, "
+            + Number(static_cast<uint32_t>(game.bases.All().size())) + " bases, " + Number(static_cast<uint32_t>(game.uniques.All().size()))
+            + " uniques, language " + std::string(gamedata::LanguageCode(language)) + ".");
+        if (const gamedata::Base* bow = game.bases.Find("m01")) {
+            Console("  m01: " + game.BaseName("m01", language) + (bow->mythical ? ", Mythical" : ", NOT Mythical"));
+        }
+        LogInfo("Loot Filter Editor: self test: " + Number(static_cast<uint32_t>(problems.size())) + " data notes.");
+        for (const std::string& note : problems) LogInfo("Loot Filter Editor:   data: " + note);
+    } catch (...) {
+        Console("lfeditor-selftest: failed with an exception.");
+        return D2RL::ConsoleCommandResult::Failed;
+    }
+    return D2RL::ConsoleCommandResult::Handled;
+}
+
+// ---------------------------------------------------------------------------
 //  UI message log (lfeditor-uilog): finds the message a game button sends
 // ---------------------------------------------------------------------------
 // Off until the command turns it on. Every UI message the game sends is
@@ -383,6 +599,15 @@ auto __cdecl OnUiMessage(const D2RL::PluginContext*, const D2RL::SharedEvents::U
             LogInfo(std::string("Loot Filter Editor: UI message ") + (event->target != nullptr ? event->target : "")
                 + ":" + (event->command != nullptr ? event->command : "") + ":" + (event->text != nullptr ? event->text : ""));
         } catch (...) {
+        }
+    }
+    // The pause menu's Loot Filter button opens the editor instead of the game's screen.
+    if (event != nullptr && event->target != nullptr && event->command != nullptr
+        && std::strcmp(event->target, "PausePanelMessage") == 0 && std::strcmp(event->command, "OpenLootFilter") == 0) {
+        if (PassNativeLootFilter.exchange(false)) return D2RL::SharedEvents::UiMessageAction::Continue;
+        if (Window) {
+            Window->Open();
+            return D2RL::SharedEvents::UiMessageAction::Consume;
         }
     }
     return D2RL::SharedEvents::UiMessageAction::Continue;
@@ -428,7 +653,8 @@ auto QueryServices() -> bool {
     return true;
 }
 
-auto RegisterAction(const char* logicalId, const char* displayName, D2RL::Input::ActionCallback callback) -> bool {
+auto RegisterAction(const char* logicalId, const char* displayName, D2RL::Input::ActionCallback callback,
+                    D2RL::Input::ActionHandle* out = nullptr) -> bool {
     const D2RL::Input::ActionRegistration registration{
         .structSize       = D2RL::Input::ActionRegistrationSize,
         .flags            = 0,
@@ -446,6 +672,7 @@ auto RegisterAction(const char* logicalId, const char* displayName, D2RL::Input:
         LogError(std::string("Loot Filter Editor: the Controls entry \"") + displayName + "\" was refused (result " + Number(static_cast<uint32_t>(result)) + ").");
         return false;
     }
+    if (out != nullptr) *out = handle;
     return true;
 }
 
@@ -454,9 +681,9 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.1.0",
+    .version     = "0.2.0",
     .author      = "Sully",
-    .description = "In-game loot filter editor (milestone 1: hovered item test).",
+    .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,
     .reserved    = {},
 };
@@ -478,13 +705,30 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
             LogWarn("Loot Filter Editor: the lfeditor-uilog command could not be registered.");
         }
         RegisterUiLog();
+        (void)Context->RegisterConsoleCommand("lfeditor-open", &OpenCommand, "Loot filter editor: open or close the window.");
+        (void)Context->RegisterConsoleCommand("lfeditor-gamefilter", &GameFilterCommand, "Loot filter editor: open the game's own loot filter screen.");
+        (void)Context->RegisterConsoleCommand("lfeditor-selftest", &SelfTestCommand, "Loot filter editor: read the active filter and the mod's data.");
         // Without both services we stay inert but let the game run.
         if (!QueryServices()) return true;
         if (!RegisterAction("loot-filter-editor-edit-item", "Edit Hovered Item (Filter Editor)", &OnEditItem)) {
             LogWarn("Loot Filter Editor: the Controls key is unavailable.");
             return true;
         }
-        LogInfo("Loot Filter Editor 0.1.0: ready. Bind \"Edit Hovered Item (Filter Editor)\" in Controls.");
+        if (!RegisterAction("loot-filter-editor-open", "Open Filter Editor", &OnOpenEditor, &OpenAction)) {
+            LogWarn("Loot Filter Editor: the open key is unavailable; use lfeditor-open.");
+        }
+        if (Context->QueryService(&ThreadsSvc) != D2RL::ServiceQueryResult::Success
+            || !D2RL::HasThreadServiceField(ThreadsSvc, D2RL::ThreadServiceRequiredSize)) {
+            ThreadsSvc = nullptr;
+        }
+        if (Context->QueryService(&WidgetsSvc) != D2RL::ServiceQueryResult::Success
+            || !D2RL::HasWidgetServiceField(WidgetsSvc, D2RL::WidgetServiceRequiredSize)) {
+            WidgetsSvc = nullptr;
+        }
+        PluginDir = ThisDllFolder();
+        DataDir = PluginDir / "esr-filter-editor";
+        StartWindow();
+        LogInfo("Loot Filter Editor 0.2.0: ready. Bind \"Open Filter Editor\" and \"Edit Hovered Item (Filter Editor)\" in Controls.");
     } catch (...) {
         LogError("Loot Filter Editor: loading failed with an exception.");
     }
@@ -492,6 +736,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 }
 
 D2RL_PLUGIN_EXPORT void D2RLoaderUnloadPlugin() noexcept {
+    StopWindow();
     if (EventsSvc != nullptr && UiListener != D2RL::SharedEvents::ListenerHandle{}) {
         (void)EventsSvc->unregisterUiMessageListener(Context, UiListener);
     }
