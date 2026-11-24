@@ -2,7 +2,7 @@
 #pragma once
 
 #include "item_types.h"
-#include "strings.h"
+#include "game_strings.h"
 #include "table.h"
 
 #include <string>

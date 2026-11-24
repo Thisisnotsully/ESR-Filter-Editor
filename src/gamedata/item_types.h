@@ -1,7 +1,7 @@
 // itemtypes.txt: the item type tree.
 #pragma once
 
-#include "strings.h"
+#include "game_strings.h"
 #include "table.h"
 
 #include <string>

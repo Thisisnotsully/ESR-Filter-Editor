@@ -1,7 +1,7 @@
 // itemstatcost.txt (stats and their tooltip wording), skills and classes.
 #pragma once
 
-#include "strings.h"
+#include "game_strings.h"
 #include "table.h"
 
 #include <string>

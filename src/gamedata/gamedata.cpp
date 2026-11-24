@@ -141,6 +141,14 @@ auto Format(std::string_view fmt, const std::vector<Arg>& args) -> std::string {
 
 }  // namespace
 
+auto GameData::AreaName(int areaId, Language lang) const -> std::string {
+    if (areaId < 0 || static_cast<std::size_t>(areaId) >= areaKeys.size()) return {};
+    const std::string& key = areaKeys[static_cast<std::size_t>(areaId)];
+    if (key.empty()) return {};
+    const std::string* text = strings.Find(key, lang);
+    return text != nullptr && !text->empty() ? Strings::Plain(*text) : key;
+}
+
 auto GameData::Load(const std::string& excelDir, const std::string& stringsDir, Language language,
                     GameData& d, std::vector<std::string>& problems) -> bool {
     const auto start = std::chrono::steady_clock::now();
@@ -168,6 +176,21 @@ auto GameData::Load(const std::string& excelDir, const std::string& stringsDir, 
     load(automagic, "automagic.txt");
     load(qualityitems, "qualityitems.txt");
     if (!d.strings.LoadFolder(stringsDir, problems)) ok = false;
+    {
+        // Areas only name the filter's area conditions, so a missing levels.txt is not an error.
+        Table levels;
+        std::vector<std::string> ignored;
+        if (levels.Load(excelDir + "/levels.txt", ignored)) {
+            const int id = levels.Col("Id");
+            const int name = levels.Col("LevelName");
+            for (int r = 0; id >= 0 && name >= 0 && r < levels.Rows(); ++r) {
+                const int area = levels.Int(r, id, -1);
+                if (area < 0 || area > 4096) continue;
+                if (static_cast<std::size_t>(area) >= d.areaKeys.size()) d.areaKeys.resize(static_cast<std::size_t>(area) + 1);
+                d.areaKeys[static_cast<std::size_t>(area)] = levels.Str(r, name);
+            }
+        }
+    }
 
     d.types.Load(itemtypes, problems);
     d.stats.Load(itemstatcost, problems);

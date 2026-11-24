@@ -4,7 +4,7 @@
 
 #include "item_types.h"
 #include "items.h"
-#include "strings.h"
+#include "game_strings.h"
 
 #include <string>
 #include <string_view>

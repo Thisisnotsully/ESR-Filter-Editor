@@ -7,7 +7,7 @@
 #include "item_types.h"
 #include "items.h"
 #include "stats.h"
-#include "strings.h"
+#include "game_strings.h"
 
 #include <string>
 #include <string_view>
@@ -49,6 +49,7 @@ struct GameData {
     std::vector<Affix> automagic;
     std::vector<SuperiorMod> superior;
     Groups groups;
+    std::vector<std::string> areaKeys;  // levels.txt LevelName by area id ("" where none); optional
     double loadMilliseconds = 0;
 
     // Loads it all. Problems (missing files, unknown codes) go to problems;
@@ -62,6 +63,8 @@ struct GameData {
     // Names in a language (plain: no color codes).
     auto BaseName(std::string_view code, Language lang) const -> std::string;
     auto ClassName(int classId, Language lang) const -> std::string;
+    // An area's name ("Rogue Encampment"); "" when unknown.
+    auto AreaName(int areaId, Language lang) const -> std::string;
     auto SkillTabName(int param, Language lang) const -> std::string;  // class * 8 + tab
 
     // Magic affixes that can roll on the base: spawnable, frequency > 0, the

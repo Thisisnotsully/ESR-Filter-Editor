@@ -1,0 +1,322 @@
+// Describes every rule of a real filter with the mod's real data, and checks the words for known rules.
+//   ui_test <excel dir> <strings dir> <filter.json> [--print]
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "document.h"
+#include "gamedata.h"
+#include "browse_view.hpp"
+#include "fakes.hpp"
+#include "rule_text.h"
+#include "rule_view.hpp"
+#include "source.h"
+
+using namespace esrfe::ui;
+
+static int failures = 0;
+static int checks = 0;
+#define CHECK(cond)                                                \
+    do {                                                           \
+        ++checks;                                                  \
+        if (!(cond)) {                                             \
+            std::printf("FAIL line %d: %s\n", __LINE__, #cond);   \
+            ++failures;                                            \
+        }                                                          \
+    } while (0)
+
+static auto Has(const std::vector<std::string>& list, const std::string& text) -> bool {
+    for (const std::string& s : list)
+        if (s.find(text) != std::string::npos) return true;
+    return false;
+}
+
+static void Print(const document::Rule& rule, const RuleSummary& s) {
+    std::printf("%-5s %-12s %s\n", rule.id.c_str(), s.actionLabel.c_str(), s.what.c_str());
+    for (const std::string& c : s.conditions) std::printf("        when: %s\n", c.c_str());
+    for (const std::string& e : s.effects) std::printf("        does: %s\n", e.c_str());
+}
+
+// The plugin's side, faked.
+class FakeSource final : public Source {
+public:
+    std::shared_ptr<const gamedata::GameData> game;
+    std::string problem;
+    FilterInfo info;
+    std::string text;
+    int settingsOpened = 0;
+    int reads = 0;
+    auto Game() -> std::shared_ptr<const gamedata::GameData> override { return game; }
+    auto GameDataProblem() -> std::string override { return problem; }
+    auto Language() -> gamedata::Language override { return gamedata::Language::enUS; }
+    auto Filter() -> FilterInfo override { return info; }
+    auto ReadFile(const std::string& path, std::string& out) -> bool override {
+        ++reads;
+        if (path != info.path) return false;
+        out = text;
+        return true;
+    }
+    void OpenGameSettings() override { ++settingsOpened; }
+};
+
+struct ViewHarness {
+    fakes::FakePlatform platform;
+    std::shared_ptr<FakeSource> source = std::make_shared<FakeSource>();
+    std::shared_ptr<BrowseView> view = std::make_shared<BrowseView>(source);
+    esrfe::overlay::Form form{platform, view};
+    esrfe::overlay::Box client{0, 0, 1280, 800};
+    esrfe::overlay::Box content{32, 72, 1248, 760};
+    void Layout() { form.Layout(client, content); }
+    // Runs what the views queued (the game's answers).
+    void Run() {
+        auto posted = std::move(platform.posted);
+        platform.posted.clear();
+        for (auto& work : posted) work(form);
+        Layout();
+    }
+    void Refresh(bool force = false) {
+        view->Refresh(form, force);
+        Run();
+    }
+    void Show() {
+        form.Shown();
+        Run();
+    }
+    void Paint() {
+        Layout();
+        platform.canvas.drawn.clear();
+        form.Paint(platform.canvas);
+    }
+    auto Drew(const std::string& text) const -> bool {
+        for (const std::string& d : platform.canvas.drawn)
+            if (d.find(text) != std::string::npos) return true;
+        return false;
+    }
+    void Click(const esrfe::overlay::Widget& w) {
+        esrfe::overlay::MouseEvent down;
+        down.kind = esrfe::overlay::MouseKind::Down;
+        down.x = w.box.CentreX();
+        down.y = w.box.CentreY();
+        form.Mouse(down);
+        esrfe::overlay::MouseEvent up = down;
+        up.kind = esrfe::overlay::MouseKind::Up;
+        form.Mouse(up);
+        Layout();
+    }
+    void Type(const std::string& text) {
+        for (char16_t c : esrfe::overlay::Utf8ToUtf16(text)) form.Char(c);
+        Layout();
+    }
+};
+
+static auto RuleIndex(const document::Document& doc, const std::string& id) -> int { return doc.FindRule(id); }
+
+static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, const std::string& filterText) {
+    ViewHarness h;
+    // No bridge, then no filter, then no data yet.
+    h.Show();
+    h.Paint();
+    CHECK(h.view->Message().find("did not answer") != std::string::npos);
+    h.source->info.bridge = true;
+    h.Refresh(true);
+    CHECK(h.view->Message().find("No loot filter is loaded") != std::string::npos);
+    h.source->info.loaded = true;
+    h.source->info.path = "C:/filters/Sullys-QoL-Filter.json";
+    h.source->info.textHash = 42;
+    h.source->info.level = 3;
+    h.source->text = filterText;
+    h.Refresh(true);
+    CHECK(h.view->Message().find("Reading the mod") != std::string::npos);
+    CHECK(h.view->Data() == nullptr);
+    // The data arrives while the window shows: the plugin asks for a refresh.
+    h.source->game = game;
+    h.Refresh();
+    h.Paint();
+    const Loaded* data = h.view->Data();
+    CHECK(data != nullptr && data->parsed);
+    if (data == nullptr || !data->parsed) return;
+    const document::Document& doc = data->doc;
+    CHECK(h.view->SectionRows() == 1 + static_cast<int>(doc.Headings().size()));
+    CHECK(static_cast<int>(h.view->ShownRules().size()) == doc.ActiveCount());
+    CHECK(h.Drew("Always show") && h.Drew("R001"));
+    CHECK(h.view->Title().find("QoL") != std::string::npos);
+
+    // The same file again: not read again.
+    const int reads = h.source->reads;
+    h.Show();
+    CHECK(h.source->reads == reads);
+    // The file changed: read again.
+    h.source->info.textHash = 43;
+    h.Show();
+    CHECK(h.source->reads == reads + 1);
+    data = h.view->Data();
+    if (data == nullptr) return;
+
+    // The level: the game's, with rules for other levels greyed out (still listed).
+    CHECK(h.view->Levels().visible);
+    CHECK(h.view->Levels().SelectedText().find("(in use)") != std::string::npos);
+    const int r125 = RuleIndex(data->doc, "R125");
+    CHECK(r125 >= 0);
+
+    // A section.
+    int mythicals = -1;
+    for (int i = 0; i < static_cast<int>(data->doc.Headings().size()); ++i)
+        if (data->doc.Headings()[static_cast<std::size_t>(i)].name == "Mythicals") { mythicals = i; break; }
+    CHECK(mythicals >= 0);
+    h.view->ChooseSection(mythicals + 1);
+    const auto& heading = data->doc.Headings()[static_cast<std::size_t>(mythicals)];
+    CHECK(static_cast<int>(h.view->ShownRules().size()) == heading.endRule - heading.firstRule);
+    // LB / RB move between sections.
+    h.form.PadPress(esrfe::overlay::PadEvent{esrfe::overlay::pad::Button::RB, false});
+    CHECK(static_cast<int>(h.view->ShownRules().size()) != heading.endRule - heading.firstRule || heading.endRule == heading.firstRule);
+    h.view->ChooseSection(0);
+
+    // The search.
+    h.form.Focus(&h.view->Search());
+    h.Type("maximum curses");
+    bool found = false;
+    for (int r : h.view->ShownRules()) found = found || data->doc.Rules()[static_cast<std::size_t>(r)].id == "R704";
+    CHECK(found);
+    CHECK(h.view->ShownRules().size() < 10);
+    h.Paint();
+    CHECK(h.platform.canvas.highlightedTexts > 0);
+
+    // Opening a rule.
+    h.form.Focus(&h.view->Rules());
+    esrfe::overlay::KeyEvent enter;
+    enter.key = esrfe::overlay::Key::Enter;
+    h.form.KeyDown(enter);
+    CHECK(h.platform.pushed.size() == 1);
+    if (!h.platform.pushed.empty()) {
+        auto* card = dynamic_cast<RuleView*>(h.platform.pushed.back().get());
+        CHECK(card != nullptr);
+        if (card != nullptr) {
+            bool curses = false, heading2 = false;
+            for (const RuleView::Line& l : card->Lines()) {
+                curses = curses || l.text.find("Maximum Curses") != std::string::npos;
+                heading2 = heading2 || (l.kind == RuleView::Line::Kind::Heading && l.text == "When");
+            }
+            CHECK(curses && heading2);
+            esrfe::overlay::Form cardForm{h.platform, h.platform.pushed.back()};
+            cardForm.Layout(h.client, h.content);
+            cardForm.Paint(h.platform.canvas);
+        }
+    }
+
+    // The game's own settings.
+    h.Click(h.view->GameSettings());
+    CHECK(h.source->settingsOpened == 1);
+
+    // A broken file.
+    h.source->text = "{ \"rules\": [ }";
+    h.source->info.textHash = 44;
+    h.Show();
+    CHECK(h.view->Message().find("could not be read") != std::string::npos);
+    h.Paint();
+}
+
+int main(int argc, char** argv) {
+    if (argc < 4) {
+        std::printf("usage: ui_test <excel dir> <strings dir> <filter.json> [--print]\n");
+        return 2;
+    }
+    const bool print = argc > 4 && std::strcmp(argv[4], "--print") == 0;
+
+    gamedata::GameData game;
+    std::vector<std::string> problems;
+    CHECK(gamedata::GameData::Load(argv[1], argv[2], gamedata::Language::enUS, game, problems));
+    CHECK(game.AreaName(1, gamedata::Language::enUS) == "Rogue Encampment");
+    CHECK(game.AreaName(9999, gamedata::Language::enUS).empty());
+
+    std::ifstream file(argv[3], std::ios::binary);
+    std::stringstream text;
+    text << file.rdbuf();
+    document::Document doc;
+    std::vector<document::Diag> diags;
+    CHECK(document::Document::Parse(text.str(), doc, diags));
+
+    DescribeContext context;
+    context.game = &game;
+    context.style = [&doc](std::string_view name) -> const document::Value* {
+        for (const document::Style& s : doc.Styles())
+            if (s.name == name) return &s.value;
+        return nullptr;
+    };
+    context.levelName = [&doc](std::int64_t id) -> std::string {
+        for (const document::FilterLevel& l : doc.GetSettings().filterLevels)
+            if (l.id == id) return PickLanguage(l.name, gamedata::Language::enUS);
+        return {};
+    };
+
+    std::map<std::string, RuleSummary> byId;
+    std::map<Action, int> actions;
+    int other = 0, rawCodes = 0;
+    for (const document::Rule& rule : doc.Rules()) {
+        RuleSummary s = Describe(rule.value, context);
+        ++actions[s.action];
+        if (s.action == Action::Other) {
+            ++other;
+            Print(rule, s);
+        }
+        CHECK(!s.what.empty());
+        CHECK(!s.actionLabel.empty());
+        // A name that is still a code (lower case, no space, 2-4 chars) means the data did not know it.
+        for (const std::string& n : s.whatAll)
+            if (n.size() <= 4 && n.find(' ') == std::string::npos && game.bases.Find(n) != nullptr) ++rawCodes;
+        if (print) Print(rule, s);
+        byId[rule.id] = std::move(s);
+    }
+    std::printf("%zu rules: hide %d, show %d, highlight %d, rename %d, other %d; names left as codes: %d\n",
+                doc.Rules().size(), actions[Action::Hide], actions[Action::Show], actions[Action::Highlight],
+                actions[Action::Rename], other, rawCodes);
+    CHECK(other == 0);
+
+    // R704: superior helms with +1 to Maximum Curses.
+    if (byId.count("R704")) {
+        const RuleSummary& s = byId["R704"];
+        CHECK(s.action == Action::Show);
+        CHECK(s.what == "Helm");
+        CHECK(Has(s.conditions, "Superior"));
+        CHECK(Has(s.conditions, "Maximum Curses"));
+        CHECK(Has(s.effects, "Chat message"));
+    }
+    // R125: hides rvs outside towns on level 3.
+    if (byId.count("R125")) {
+        const RuleSummary& s = byId["R125"];
+        CHECK(s.action == Action::Hide);
+        CHECK(Has(s.conditions, "Outside towns"));
+        CHECK(s.levels.size() == 1 && s.levels[0] == 3);
+        CHECK(Has(s.conditions, "Very-Strict"));
+    }
+    // R720: a crystal's game name without the item level.
+    if (byId.count("R720")) {
+        const RuleSummary& s = byId["R720"];
+        CHECK(s.action == Action::Rename);
+        CHECK(!s.preview.empty() && s.preview.find('{') == std::string::npos);
+    }
+    // A coupon label keeps its colour codes in the preview.
+    if (byId.count("R574")) {
+        CHECK(byId["R574"].preview.find("Ravenlore") != std::string::npos);
+    }
+
+    // The lists.
+    CHECK(JoinNames({"A"}, 3) == "A");
+    CHECK(JoinNames({"A", "B"}, 3) == "A and B");
+    CHECK(JoinNames({"A", "B", "C"}, 3) == "A, B and C");
+    CHECK(JoinNames({"A", "B", "C", "D", "E"}, 3) == "A, B, C and 2 more");
+    document::Value names = document::Value::Object({{"enUS", document::Value::String("Hi")}, {"deDE", document::Value::String("Hallo")}});
+    CHECK(PickLanguage(names, gamedata::Language::deDE) == "Hallo");
+    CHECK(PickLanguage(names, gamedata::Language::frFR) == "Hi");
+
+    {
+        auto shared = std::make_shared<gamedata::GameData>(std::move(game));
+        ViewTests(shared, text.str());
+    }
+
+    std::printf("%d checks, %d failures\n", checks, failures);
+    return failures == 0 ? 0 : 1;
+}

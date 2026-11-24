@@ -11,7 +11,7 @@ for Eastern Sun Resurrected. A D2RLoader plugin DLL
 | `src/document/` | The filter file as a document: reads it with every comment, blank line and heading kept, exposes parts, sections and rules, applies edits, writes it back. An untouched file is written back byte for byte. | standard C++ only | on Linux, `tests/` |
 | `src/gamedata/` | The mod's tables and strings, read from the mod's data folder: item types, bases (and Mythicals), uniques, sets, affixes, superior bonuses, stats with their tooltip wording, in the player's language. | standard C++ only | on Linux, against the real mod files |
 | `src/overlay/` | The window: a Win32 overlay on its own UI thread, taken from the ESR Wiki overlay (window, DPI scaling, cursor, controller, on-screen keyboard, input block, UI strings). Knows nothing about filters: it hosts views. | Win32, GDI/GDI+, XInput, HID | in game |
-| `src/ui/` | The editor's views (browse, rule card, add-rule steps) drawn with the overlay's toolkit, on top of document + gamedata. | the three above | in game, plus logic tests on Linux |
+| `src/ui/` | The editor's views drawn with the overlay's toolkit, on top of document + gamedata: rules in plain words (`rule_text`), the browse view, the rule card; later the add-rule steps. What they need from the plugin is `source.h`. | the three above | on Linux, `tests/ui` (real filter and mod data), and in game |
 | `src/plugin.cpp` | D2RLoader entry: services, key bindings, console command, the bridge lease, opening the window. | the SDK | in game |
 | `tools/filtercheck/` | Checks for Sully's QoL Filter (see its README). | g++, Python | Linux |
 
@@ -24,6 +24,8 @@ the loaded filter's state. It is the only link to the loot filter.
 - `document` and `gamedata` use only standard C++20, no Windows headers, so
   they build and are tested on Linux with g++/clang. Text is UTF-8
   `std::string` everywhere; the overlay converts to UTF-16 at the Win32 edge.
+- The mod's data is read once, on a thread of its own when the window starts
+  (about a second); the browse view says so until it is in.
 - Threads: the overlay has its own UI thread. Game-thread work (the bridge,
   D2RLoader services) is queued to the game thread; results come back as
   plain copies. `document` and `gamedata` objects belong to the overlay thread.

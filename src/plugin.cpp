@@ -27,7 +27,9 @@
 #include "gamedata.h"
 #include "overlay.hpp"
 #include "debug_log.hpp"
+#include "browse_view.hpp"
 #include "demo_view.hpp"
+#include "source.h"
 #include "game_thread.hpp"
 #include "input_block.hpp"
 #include "ui_text.hpp"
@@ -38,6 +40,8 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <sstream>
 #include <vector>
 #include <cstdint>
@@ -393,7 +397,7 @@ auto __cdecl EditorCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext
 }
 
 // ---------------------------------------------------------------------------
-//  The editor window (milestone 2: the overlay with its demo view)
+//  The editor window: the browse view over the loaded filter
 // ---------------------------------------------------------------------------
 namespace ov = esrfe::overlay;
 
@@ -426,6 +430,96 @@ auto ModDataFolder() -> std::filesystem::path {
     const std::filesystem::path mod = PluginDir.parent_path().parent_path();
     return mod / (mod.filename().string() + ".mpq") / "data";
 }
+
+void __cdecl DoOpenNativeLootFilter(const D2RL::PluginContext*, void*) noexcept;
+
+// ---- what the editor's views ask of the plugin (src/ui/source.h) ----
+
+// The mod's data, read once on a thread of its own when the window starts (about a second), then shared.
+std::mutex                                     GameLock;
+std::shared_ptr<const gamedata::GameData>      GameData;      // nullptr until read
+std::string                                    GameProblem;   // why it could not be read
+std::thread                                    GameLoader;
+std::weak_ptr<esrfe::ui::BrowseView>           Browse;        // the root view, to refresh it when the data is in
+
+auto EditorLanguage() -> gamedata::Language {
+    gamedata::Language language = gamedata::Language::enUS;
+    if (!Locale.empty()) gamedata::ParseLanguage(Locale, language);
+    return language;
+}
+
+void LoadGameData() noexcept {
+    try {
+        const std::filesystem::path data = ModDataFolder();
+        auto game = std::make_shared<gamedata::GameData>();
+        std::vector<std::string> problems;
+        const bool ok = gamedata::GameData::Load((data / "global" / "excel").string(), (data / "local" / "lng" / "strings").string(),
+                                                 EditorLanguage(), *game, problems);
+        LogInfo("Loot Filter Editor: the mod's data " + std::string(ok ? "is read" : "could NOT be read") + " ("
+            + Number(static_cast<uint32_t>(game->loadMilliseconds)) + " ms, " + Number(static_cast<uint32_t>(problems.size())) + " notes).");
+        {
+            std::lock_guard<std::mutex> lock(GameLock);
+            if (ok) GameData = std::move(game);
+            else GameProblem = problems.empty() ? "the tables are missing from " + data.string() : problems.front();
+        }
+    } catch (...) {
+        std::lock_guard<std::mutex> lock(GameLock);
+        GameProblem = "reading it failed";
+    }
+    if (Window) {
+        Window->PostToUi([](ov::Ui& ui) {
+            if (auto view = Browse.lock()) view->Refresh(ui);
+        });
+    }
+}
+
+class PluginSource final : public esrfe::ui::Source {
+public:
+    auto Game() -> std::shared_ptr<const gamedata::GameData> override {
+        std::lock_guard<std::mutex> lock(GameLock);
+        return GameData;
+    }
+    auto GameDataProblem() -> std::string override {
+        std::lock_guard<std::mutex> lock(GameLock);
+        return GameProblem;
+    }
+    auto Language() -> gamedata::Language override { return EditorLanguage(); }
+
+    // On the game's UI thread, where the bridge lives.
+    auto Filter() -> esrfe::ui::FilterInfo override {
+        esrfe::ui::FilterInfo info;
+        if (!AcquireBridge(false, nullptr) || Lease->getFilterState == nullptr) return info;
+        Bridge::FilterState state{};
+        state.structSize = sizeof(state);
+        if (Lease->getFilterState(&state) != Bridge::Result::Success) return info;
+        info.bridge = true;
+        info.loaded = state.loaded != 0;
+        info.shipped = state.shipped != 0;
+        info.path = Text(state.path);
+        info.title = Text(state.title);
+        info.failure = Text(state.failure);
+        info.level = state.level;
+        info.textHash = state.textHash;
+        const uint32_t levels = std::min<uint32_t>(state.levelCount, Bridge::MaxLevels);
+        for (uint32_t i = 0; i < levels; ++i) info.levels.push_back({state.levelIds[i], Text(state.levelNames[i])});
+        return info;
+    }
+
+    auto ReadFile(const std::string& path, std::string& out) -> bool override {
+        std::ifstream file(std::filesystem::path(std::u8string(path.begin(), path.end())), std::ios::binary);
+        if (!file) return false;
+        std::stringstream text;
+        text << file.rdbuf();
+        out = text.str();
+        return !file.bad();
+    }
+
+    void OpenGameSettings() override {
+        if (Window) Window->Close();
+        if (ThreadsSvc == nullptr || ThreadsSvc->runOnUiThread(Context, &DoOpenNativeLootFilter, nullptr) != D2RL::Threads::Result::Success)
+            LogWarn("Loot Filter Editor: the game's loot filter screen could not be opened.");
+    }
+};
 
 // The open key, as bound in Controls. It closes the window again while the window has the keyboard.
 auto MatchesOpenKey(unsigned int virtualKey) -> bool {
@@ -464,11 +558,17 @@ void StartWindow() {
     config.queueGameUi = ov::GameThreadQueue(Context, ThreadsSvc, ov::GameThread::Ui);
     config.queueGameLogic = ov::GameThreadQueue(Context, ThreadsSvc, ov::GameThread::Game);
     Window = std::make_unique<ov::Overlay>();
-    if (!Window->Start(config, [] { return std::make_shared<ov::DemoView>(); })) {
+    auto source = std::make_shared<PluginSource>();
+    if (!Window->Start(config, [source] {
+            auto view = std::make_shared<esrfe::ui::BrowseView>(source);
+            Browse = view;
+            return view;
+        })) {
         LogError("Loot Filter Editor: the window could not be created (see the lines above).");
         Window.reset();
         return;
     }
+    GameLoader = std::thread(&LoadGameData);
     if (ov::inputblock::Install([] { return Window != nullptr && Window->IsOpen(); })) {
         LogInfo("Loot Filter Editor: controller block installed.");
     } else {
@@ -479,6 +579,7 @@ void StartWindow() {
 void StopWindow() noexcept {
     try {
         ov::inputblock::Remove();
+        if (GameLoader.joinable()) GameLoader.join();  // it posts to the window when it is done
         if (Window) Window->Stop();
         Window.reset();
     } catch (...) {
@@ -501,6 +602,18 @@ auto __cdecl OpenCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* 
         return D2RL::ConsoleCommandResult::Handled;
     }
     Window->Toggle();
+    return D2RL::ConsoleCommandResult::Handled;
+}
+
+// The milestone 2 demo of every control, pushed over the browse view (for checking the toolkit in game).
+auto __cdecl DemoCommand(D2R::Game::Client*, const D2RL::ConsoleCommandContext* command, void*) noexcept -> D2RL::ConsoleCommandResult {
+    if (command == nullptr) return D2RL::ConsoleCommandResult::Failed;
+    if (!Window) {
+        Console("lfeditor-demo: the window is unavailable (see the plugin log).");
+        return D2RL::ConsoleCommandResult::Handled;
+    }
+    Window->PostToUi([](ov::Ui& ui) { ui.PushView(std::make_shared<ov::DemoView>()); });
+    Window->Open();
     return D2RL::ConsoleCommandResult::Handled;
 }
 
@@ -681,7 +794,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.2.0",
+    .version     = "0.3.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,
@@ -707,6 +820,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
         RegisterUiLog();
         (void)Context->RegisterConsoleCommand("lfeditor-open", &OpenCommand, "Loot filter editor: open or close the window.");
         (void)Context->RegisterConsoleCommand("lfeditor-gamefilter", &GameFilterCommand, "Loot filter editor: open the game's own loot filter screen.");
+        (void)Context->RegisterConsoleCommand("lfeditor-demo", &DemoCommand, "Loot filter editor: open the controls demo.");
         (void)Context->RegisterConsoleCommand("lfeditor-selftest", &SelfTestCommand, "Loot filter editor: read the active filter and the mod's data.");
         // Without both services we stay inert but let the game run.
         if (!QueryServices()) return true;

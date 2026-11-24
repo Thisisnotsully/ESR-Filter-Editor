@@ -128,3 +128,17 @@ Build and install with `build-and-install.bat` (game closed), then in game:
 - [ ] `lfeditor-selftest` in the console: the filter is "read" and "saved back byte for byte", and the mod data is "read", with the times.
 
 Send the console lines and the plugin log lines starting with `Loot Filter Editor:`.
+
+## Milestone 2b: browsing the filter (test build)
+
+Build and install with `build-and-install.bat` (game closed). Then, in game, with Sully's QoL Filter loaded:
+
+- [ ] Open the editor. For about a second it may say "Reading the mod's item data…". Then it shows the filter: its title at the top, the parts and sections on the left, and the rules on the right. The log says "the mod's data is read (N ms ...)".
+- [ ] Each rule shows a coloured action (Hide, Always show, Highlight, Rename), its items by name, and when it applies. Read a few and check they match what the rule does.
+- [ ] Click a section (or LB / RB on a controller): only its rules show. "All rules" shows all 729.
+- [ ] Type into the search box (for example `maximum curses`, `ber`, `outside towns`, `R125`). The rules narrow and the words are marked.
+- [ ] The Level drop-down starts on the level the game uses, marked "(in use)". Rules for other levels are greyed out with "Not on this level". "Every level" shows them all normally.
+- [ ] Open a rule (double click, Enter or A). Its card lists every item, every condition and every effect. A renamed item shows its new name in the game's colours. Back returns to the list.
+- [ ] **Game loot filter settings** closes the editor and opens the game's own screen. Choose another level there, open the editor again: the level follows.
+- [ ] Edit the filter file in a text editor while the game runs, save it, then open the editor again: it shows the change.
+- [ ] `lfeditor-demo` still opens the controls demo over the list.
