@@ -76,6 +76,16 @@ public:
     void SetOwnOff(const std::string& id, bool off);
     [[nodiscard]] auto Own(const std::string& id) const -> const OwnRule*;
 
+    // A top-level setting the player set (nullptr: the author's applies).
+    [[nodiscard]] auto PlayerSetting(const std::string& key) const -> const Value*;
+    // The player's value (nullptr: back to the author's).
+    void SetSetting(const std::string& key, const Value* value);
+    // The filter's volume as the player has it: soundVolume, 100 when the filter has none.
+    [[nodiscard]] auto SoundVolume() const -> int;
+    // The author's sound files ("gong.mp3"), sorted, and where one is.
+    [[nodiscard]] auto SoundFiles() const -> std::vector<std::string>;
+    [[nodiscard]] auto SoundPath(const std::string& file) const -> std::string;
+
     void Resolve(const Conflict& conflict, bool keepMine);
     // The update is taken in: later merges compare with this version of the author's filter.
     void FinishConflicts();

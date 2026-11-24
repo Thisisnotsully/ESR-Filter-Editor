@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <map>
 
 #include "groups.h"
 #include "text_fold.hpp"
@@ -17,32 +18,33 @@ using overlay::UiText;
 
 namespace {
 
-constexpr const char* kStepNames[] = {"1 What happens", "2 Items", "3 Tier", "4 Rarity", "5 Stats", "6 Levels", "7 Check"};
+constexpr const char* kStepNames[] = {"1 What happens", "2 Kind", "3 Items", "4 Tier", "5 Bonuses", "6 Levels", "7 Look", "8 Check"};
 constexpr const char* kStepHeadings[] = {
-    "What should happen to these items?",
-    "Which items?",
-    "Which tiers?",
-    "Which rarities?",
-    "Which stats?",
-    "On which filter levels?",
-    "Your rule",
+    "What should happen to these items?", "What kind of item?", "Which items?",      "Which tiers?",
+    "Which bonuses?",                     "On which filter levels?", "How should it look?", "Your rule",
 };
 constexpr const char* kStepHints[] = {
-    "Hide them, always show them (no rule can hide them then), or highlight them with a coloured border.",
-    "Choose a group on the left, then tick items on the right. Or search for an item by name.",
-    "Normal, Exceptional, Elite. Mythical bases count as Elite; you can leave them out or keep only them.",
-    "Leave every box empty for every rarity.",
-    "Tick the bonuses the item must have and how much. Rules with stats only work on identified items.",
+    "Hide: on the filter levels you pick. Show: never hidden on the levels you pick, with your look. Always Show: never hidden on any level.",
+    "Choose the kind first: the next steps only offer what fits it.",
+    "Choose a list on the left, then tick items on the right. Or search by name.",
+    "Leave every box as it is for all of them.",
+    "Tick the bonuses the item must have and how much. Rules with bonuses only work on identified items.",
     "Leave every box ticked for every level.",
-    "Check it, then add it. Your own rules come first in the filter, so they win over the author's.",
+    "Everything is optional: leave the game's look by choosing nothing. The picture shows the label on the ground.",
+    "Check it, then add it. Your rules come first in the filter: what they hide is hidden, what they show is never hidden.",
 };
 const char* const kTierLabels[] = {"Normal", "Exceptional", "Elite"};
 const gamedata::Tier kTiers[] = {gamedata::Tier::Normal, gamedata::Tier::Exceptional, gamedata::Tier::Elite};
 const char* const kMythLabels[] = {"With Mythicals", "Without Mythicals", "Only Mythicals"};
+const char* const kPickTargets[] = {"Border", "Background", "Light beam"};
 
-auto TierWord(const gamedata::Base& b) -> const char* {
-    if (b.mythical) return "Mythical";
-    switch (b.tier) {
+auto ToOverlay(const Rgb& c) -> overlay::Rgb {
+    return overlay::Rgb{static_cast<std::uint8_t>(c.r), static_cast<std::uint8_t>(c.g), static_cast<std::uint8_t>(c.b)};
+}
+auto FromOverlay(const overlay::Rgb& c) -> Rgb { return Rgb{c.r, c.g, c.b}; }
+
+auto TierWord(gamedata::Tier t) -> const char* {
+    switch (t) {
         case gamedata::Tier::Normal: return "Normal";
         case gamedata::Tier::Exceptional: return "Exceptional";
         case gamedata::Tier::Elite: return "Elite";
@@ -50,8 +52,25 @@ auto TierWord(const gamedata::Base& b) -> const char* {
     }
 }
 
-auto Has(const std::vector<std::string>& list, const std::string& code) -> bool {
-    return std::find(list.begin(), list.end(), code) != list.end();
+// The colour the game gives a name of this kind (the label preview).
+auto KindColor(ItemKind kind) -> overlay::Rgb {
+    switch (kind) {
+        case ItemKind::Magic: return {105, 105, 255};
+        case ItemKind::Rare: return {255, 255, 100};
+        case ItemKind::Unique: return {199, 179, 119};
+        case ItemKind::Set: return {0, 255, 0};
+        case ItemKind::Other: return {255, 168, 0};
+        default: return {255, 255, 255};
+    }
+}
+
+void PaintTick(overlay::Canvas& canvas, const overlay::Box& row, bool on) {
+    const overlay::Theme& theme = canvas.GetTheme();
+    const int size = canvas.S(14);
+    const overlay::Box tick{row.left + canvas.S(8), row.CentreY() - size / 2, row.left + canvas.S(8) + size, row.CentreY() - size / 2 + size};
+    canvas.Fill(tick, theme.field);
+    canvas.Frame(tick, theme.border);
+    if (on) canvas.Fill(tick.Inflated(-canvas.S(3)), theme.gold);
 }
 
 }  // namespace
@@ -73,105 +92,100 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
     hint_.useThemeColor = false;
 
     // 1 What happens.
-    hide_.label = "Hide them";
-    show_.label = "Always show them";
-    highlight_.label = "Highlight them";
-    for (overlay::Chip* c : {&hide_, &show_, &highlight_}) c->font = Font::Body;
-    hide_.onClick = [this](Ui& ui) { draft_.action = DraftAction::Hide; Changed(); ui.Repaint(); };
-    show_.onClick = [this](Ui& ui) { draft_.action = DraftAction::Show; Changed(); ui.Repaint(); };
-    highlight_.onClick = [this](Ui& ui) { draft_.action = DraftAction::Highlight; Changed(); ui.Repaint(); };
-    colorLabel_.text = "Border colour";
-    colorLabel_.font = Font::Small;
-    for (std::size_t i = 0; i < HighlightColors().size(); ++i) {
-        overlay::Chip& chip = colors_.emplace_back();
-        chip.label = HighlightColors()[i].english;
-        chip.onClick = [this, i](Ui& ui) { draft_.color = static_cast<int>(i); Changed(); ui.Repaint(); };
-    }
-    beam_.label = "A light beam where it drops";
-    beam_.onChange = [this](bool on, Ui& ui) { draft_.beam = on; Changed(); ui.Repaint(); };
-    chat_.label = "A chat line when it drops";
-    chat_.onChange = [this](bool on, Ui& ui) { draft_.chat = on; Changed(); ui.Repaint(); };
-
-    // 2 Items.
-    itemSearch_.search = true;
-    itemSearch_.placeholder = "Search for an item: Mystic Staff, Ber Rune, ring…";
-    itemSearch_.onChange = [this](const std::string&, Ui& ui) { RebuildBases(); baseList_.SetScroll(0); ui.Repaint(); };
-    for (std::size_t g = 0; g < game_.groups.All().size(); ++g) {
-        const gamedata::Group& group = game_.groups.All()[g];
-        const std::string name = gamedata::Groups::Name(group, game_.strings, loaded_->language);
-        if (group.subgroups.size() == 1) {
-            groupRows_.push_back(GroupRow{static_cast<int>(g), 0, name});
-            continue;
-        }
-        groupRows_.push_back(GroupRow{static_cast<int>(g), -1, name});
-        for (std::size_t s = 0; s < group.subgroups.size(); ++s)
-            groupRows_.push_back(GroupRow{static_cast<int>(g), static_cast<int>(s),
-                                          gamedata::Groups::Name(group.subgroups[s], game_.strings, loaded_->language)});
-    }
-    groupList_.rowGap = 0;
-    groupList_.SetCount(static_cast<int>(groupRows_.size()));
-    groupList_.paintRow = [this](Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
-        if (index < 0 || index >= static_cast<int>(groupRows_.size())) return;
-        const GroupRow& r = groupRows_[static_cast<std::size_t>(index)];
-        const overlay::Theme& theme = canvas.GetTheme();
-        const bool heading = r.subgroup < 0;
-        const bool single = !heading && game_.groups.All()[static_cast<std::size_t>(r.group)].subgroups.size() == 1;
-        const Box text{row.left + canvas.S(heading || single ? 8 : 22), row.top, row.right - canvas.S(6), row.bottom};
-        canvas.PushClip(text);
-        canvas.Text(r.name, text, heading ? theme.headerGold : theme.text, heading || single ? Font::Bold : Font::Body, kVCenter | kSingleLine);
-        canvas.PopClip();
+    hide_.label = "Hide";
+    show_.label = "Show";
+    always_.label = "Always Show (all strictness levels)";
+    const auto act = [this](DraftAction a) {
+        return [this, a](Ui& ui) {
+            draft_.action = a;
+            Changed();
+            ui.Repaint();
+        };
     };
-    groupList_.onSelect = [this](int, Ui& ui) {
-        itemSearch_.SetValue("");
-        RebuildBases();
-        baseList_.SetScroll(0);
+    hide_.onClick = act(DraftAction::Hide);
+    show_.onClick = act(DraftAction::Show);
+    always_.onClick = act(DraftAction::AlwaysShow);
+    for (overlay::Chip* c : {&hide_, &show_, &always_}) c->font = Font::Body;
+
+    // 2 Kind.
+    for (const auto& [kind, name] : KindChoices()) {
+        overlay::Chip& chip = kinds_.emplace_back();
+        chip.label = name;
+        chip.font = Font::Body;
+        const ItemKind k = kind;
+        chip.onClick = [this, k](Ui& ui) {
+            if (draft_.kind != k) {
+                draft_.kind = k;
+                itemSearch_.SetValue("");
+                Changed();
+                GoTo(Step::Items);  // straight on to the items of that kind
+            }
+            ui.Repaint();
+        };
+    }
+
+    // 3 Items.
+    itemSearch_.search = true;
+    itemSearch_.placeholder = "Search by name…";
+    itemSearch_.onChange = [this](const std::string&, Ui& ui) {
+        RebuildEntries();
+        entryList_.SetScroll(0);
         ui.Repaint();
     };
-    baseList_.rowGap = 0;
-    baseList_.emptyText = "Choose a group on the left";
-    baseList_.paintRow = [this](Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
-        if (index < 0 || index >= static_cast<int>(baseRows_.size())) return;
-        const std::string& code = baseRows_[static_cast<std::size_t>(index)];
-        const gamedata::Base* b = game_.bases.Find(code);
+    categoryList_.rowGap = 0;
+    categoryList_.paintRow = [this](Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
+        if (index < 0 || index >= static_cast<int>(categories_.size())) return;
+        const Category& c = categories_[static_cast<std::size_t>(index)];
         const overlay::Theme& theme = canvas.GetTheme();
-        const bool on = Has(draft_.bases, code);
-        const int size = canvas.S(14);
-        const Box tick{row.left + canvas.S(8), row.CentreY() - size / 2, row.left + canvas.S(8) + size, row.CentreY() - size / 2 + size};
-        canvas.Fill(tick, theme.field);
-        canvas.Frame(tick, theme.border);
-        if (on) canvas.Fill(tick.Inflated(-canvas.S(3)), theme.gold);
-        const std::string tier = b != nullptr ? UiText(TierWord(*b)) : std::string{};
-        const int tierWidth = tier.empty() ? 0 : canvas.TextWidth(tier, Font::Small) + canvas.S(10);
-        const Box text{tick.right + canvas.S(8), row.top, row.right - tierWidth - canvas.S(6), row.bottom};
+        const Box text{row.left + canvas.S(c.heading ? 8 : 18), row.top, row.right - canvas.S(6), row.bottom};
         canvas.PushClip(text);
-        canvas.Text(EntryName("itemCodes", Value::String(code), loaded_->context), text, on ? theme.text : theme.dim, Font::Body,
-                    kVCenter | kSingleLine);
+        canvas.Text(c.name, text, c.heading ? theme.headerGold : theme.text, c.heading ? Font::Bold : Font::Body, kVCenter | kSingleLine);
         canvas.PopClip();
-        if (!tier.empty())
-            canvas.Text(tier, Box{row.right - tierWidth, row.top, row.right - canvas.S(6), row.bottom}, theme.dim, Font::Small,
-                        kRight | kVCenter | kSingleLine);
     };
-    baseList_.onClick = [this](int index, Ui& ui) { ToggleBase(index, ui); };
-    baseList_.onActivate = [this](int index, Ui& ui) { ToggleBase(index, ui); };
+    categoryList_.onSelect = [this](int, Ui& ui) {
+        itemSearch_.SetValue("");
+        RebuildEntries();
+        entryList_.SetScroll(0);
+        ui.Repaint();
+    };
+    entryList_.rowGap = 0;
+    entryList_.emptyText = "Choose a list on the left";
+    entryList_.paintRow = [this](Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
+        if (index < 0 || index >= static_cast<int>(entries_.size())) return;
+        const Entry& e = entries_[static_cast<std::size_t>(index)];
+        const overlay::Theme& theme = canvas.GetTheme();
+        const bool on = Picked(e);
+        PaintTick(canvas, row, on);
+        const int tagWidth = e.tag.empty() ? 0 : std::min(row.Width() / 2, canvas.TextWidth(e.tag, Font::Small) + canvas.S(12));
+        const Box text{row.left + canvas.S(30), row.top, row.right - tagWidth - canvas.S(6), row.bottom};
+        canvas.PushClip(text);
+        canvas.Text(e.name, text, on ? theme.text : theme.dim, Font::Body, kVCenter | kSingleLine);
+        canvas.PopClip();
+        if (!e.tag.empty()) {
+            const Box tag{row.right - tagWidth, row.top, row.right - canvas.S(6), row.bottom};
+            canvas.PushClip(tag);
+            canvas.Text(e.tag, tag, theme.dim, Font::Small, kRight | kVCenter | kSingleLine);
+            canvas.PopClip();
+        }
+    };
+    entryList_.onClick = [this](int index, Ui& ui) { ToggleEntry(index, ui); };
+    entryList_.onActivate = [this](int index, Ui& ui) { ToggleEntry(index, ui); };
     all_.label = "Tick all";
     all_.onClick = [this](Ui& ui) {
-        for (const std::string& code : baseRows_)
-            if (!Has(draft_.bases, code)) draft_.bases.push_back(code);
-        Changed();
-        ui.Repaint();
+        for (int i = 0; i < static_cast<int>(entries_.size()); ++i)
+            if (!Picked(entries_[static_cast<std::size_t>(i)])) ToggleEntry(i, ui);
     };
     none_.label = "Untick all";
     none_.onClick = [this](Ui& ui) {
-        draft_.bases.erase(std::remove_if(draft_.bases.begin(), draft_.bases.end(), [this](const std::string& c) { return Has(baseRows_, c); }),
-                           draft_.bases.end());
-        Changed();
-        ui.Repaint();
+        for (int i = 0; i < static_cast<int>(entries_.size()); ++i)
+            if (Picked(entries_[static_cast<std::size_t>(i)])) ToggleEntry(i, ui);
     };
     chosen_.translate = false;
     chosen_.font = Font::Small;
+    chosen_.flags = kLeft;
     chosen_.useThemeColor = false;
 
-    // 3 Tier.
+    // 4 Tier.
     for (std::size_t i = 0; i < 3; ++i) {
         overlay::Checkbox& box = tiers_.emplace_back();
         box.label = kTierLabels[i];
@@ -185,49 +199,64 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
             ui.Repaint();
         };
     }
+    qualityLabel_.text = "Quality";
+    qualityLabel_.font = Font::Small;
+    white_.label = "White (normal)";
+    superior_.label = "Superior";
+    const auto quality = [this](int q) {
+        return [this, q](bool on, Ui& ui) {
+            std::set<int> now = draft_.baseQualities.empty() ? std::set<int>{2, 3} : draft_.baseQualities;
+            if (on) now.insert(q);
+            else now.erase(q);
+            if (now.empty()) {
+                status_.text = UiText("Keep White, Superior or both.");
+                SyncControls();
+                ui.Repaint();
+                return;
+            }
+            draft_.baseQualities = now.size() == 2 ? std::set<int>{} : now;
+            Changed();
+            ui.Repaint();
+        };
+    };
+    white_.onChange = quality(2);
+    superior_.onChange = quality(3);
     mythLabel_.text = "Mythical bases";
     mythLabel_.font = Font::Small;
     for (std::size_t i = 0; i < 3; ++i) {
         overlay::Chip& chip = myth_.emplace_back();
         chip.label = kMythLabels[i];
-        chip.onClick = [this, i](Ui& ui) { draft_.mythical = static_cast<MythicalMode>(i); Changed(); ui.Repaint(); };
-    }
-
-    // 4 Rarity.
-    for (const auto& [quality, name] : RarityChoices()) {
-        overlay::Checkbox& box = rarities_.emplace_back();
-        box.label = name;
-        const int q = quality;
-        box.onChange = [this, q](bool on, Ui& ui) {
-            if (on) draft_.rarities.insert(q);
-            else draft_.rarities.erase(q);
+        chip.onClick = [this, i](Ui& ui) {
+            draft_.mythical = static_cast<RuleDraft::Mythicals>(i);
             Changed();
             ui.Repaint();
         };
     }
 
-    // 5 Stats.
+    // 5 Bonuses.
     statSearch_.search = true;
     statSearch_.placeholder = "Search the bonuses: life, skills, resist…";
-    statSearch_.onChange = [this](const std::string&, Ui& ui) { RebuildStats(); statList_.SetScroll(0); ui.Repaint(); };
+    statSearch_.onChange = [this](const std::string&, Ui& ui) {
+        RebuildStats();
+        statList_.SetScroll(0);
+        ui.Repaint();
+    };
     statList_.rowGap = 0;
     statList_.emptyText = "No bonuses";
     statList_.paintRow = [this](Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
         if (index < 0 || index >= static_cast<int>(statRows_.size())) return;
-        const StatOption& o = offer_.stats[static_cast<std::size_t>(statRows_[static_cast<std::size_t>(index)])];
+        const std::size_t at = static_cast<std::size_t>(statRows_[static_cast<std::size_t>(index)]);
+        if (at >= offer_.stats.size()) return;
+        const StatOption& o = offer_.stats[at];
         const overlay::Theme& theme = canvas.GetTheme();
         const StatPick* pick = nullptr;
         for (const StatPick& p : draft_.stats)
             if (p.stat == o.stat && p.param == o.param) pick = &p;
-        const int size = canvas.S(14);
-        const Box tick{row.left + canvas.S(8), row.CentreY() - size / 2, row.left + canvas.S(8) + size, row.CentreY() - size / 2 + size};
-        canvas.Fill(tick, theme.field);
-        canvas.Frame(tick, theme.border);
-        if (pick != nullptr) canvas.Fill(tick.Inflated(-canvas.S(3)), theme.gold);
+        PaintTick(canvas, row, pick != nullptr);
         const std::string right = pick != nullptr ? UiFormat("at least {0}", {std::to_string(pick->atLeast)})
                                                   : UiFormat("{0} to {1}", {std::to_string(o.min), std::to_string(o.max)});
         const int rightWidth = canvas.TextWidth(right, Font::Small) + canvas.S(12);
-        const Box text{tick.right + canvas.S(8), row.top, row.right - rightWidth, row.bottom};
+        const Box text{row.left + canvas.S(30), row.top, row.right - rightWidth, row.bottom};
         canvas.PushClip(text);
         canvas.Text(o.label, text, pick != nullptr ? theme.text : theme.dim, Font::Body, kVCenter | kSingleLine);
         canvas.PopClip();
@@ -236,13 +265,18 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
     };
     statList_.onClick = [this](int index, Ui& ui) { ToggleStat(index, ui); };
     statList_.onActivate = [this](int index, Ui& ui) { ToggleStat(index, ui); };
-    statList_.onSelect = [this](int, Ui& ui) { SyncControls(); ui.Repaint(); };
+    statList_.onSelect = [this](int, Ui& ui) {
+        SyncControls();
+        ui.Repaint();
+    };
     atLeastLabel_.text = "At least";
     atLeastLabel_.font = Font::Small;
     atLeast_.onChange = [this](int value, Ui& ui) {
         const int row = statList_.Selected();
         if (row < 0 || row >= static_cast<int>(statRows_.size())) return;
-        const StatOption& o = offer_.stats[static_cast<std::size_t>(statRows_[static_cast<std::size_t>(row)])];
+        const std::size_t at = static_cast<std::size_t>(statRows_[static_cast<std::size_t>(row)]);
+        if (at >= offer_.stats.size()) return;
+        const StatOption& o = offer_.stats[at];
         for (StatPick& p : draft_.stats)
             if (p.stat == o.stat && p.param == o.param) p.atLeast = value;
         Changed();
@@ -272,7 +306,90 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
         };
     }
 
-    // 7 Check.
+    // 7 Look.
+    borderLabel_.text = "Border";
+    backLabel_.text = "Background";
+    nameLabel_.text = "Name colour";
+    soundLabel_.text = "Drop sound";
+    pickLabel_.text = "Any colour for:";
+    for (overlay::Label* l : {&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &pickLabel_}) l->font = Font::Small;
+    borderNone_.label = "None";
+    backNone_.label = "None";
+    nameGame_.label = "The game's";
+    borderNone_.onClick = [this](Ui& ui) { draft_.look.border.reset(); Changed(); ui.Repaint(); };
+    backNone_.onClick = [this](Ui& ui) { draft_.look.background.reset(); Changed(); ui.Repaint(); };
+    nameGame_.onClick = [this](Ui& ui) { draft_.look.nameColor = -1; Changed(); ui.Repaint(); };
+    for (std::size_t i = 0; i < Swatches().size(); ++i) {
+        const NamedColor& c = Swatches()[i];
+        for (auto* row : {&borderSw_, &backSw_, &beamSw_}) {
+            overlay::Swatch& s = row->emplace_back();
+            s.label = c.english;
+            s.color = ToOverlay(c.rgb);
+        }
+        const Rgb rgb = c.rgb;
+        borderSw_.back().onClick = [this, rgb](Ui& ui) { draft_.look.border = rgb; SetPickTarget(0); Changed(); ui.Repaint(); };
+        backSw_.back().onClick = [this, rgb](Ui& ui) { draft_.look.background = rgb; SetPickTarget(1); Changed(); ui.Repaint(); };
+        beamSw_.back().onClick = [this, rgb](Ui& ui) {
+            draft_.look.beam = true;
+            draft_.look.beamColor = rgb;
+            SetPickTarget(2);
+            Changed();
+            ui.Repaint();
+        };
+    }
+    for (std::size_t i = 0; i < NameColors().size(); ++i) {
+        const NameColor& c = NameColors()[i];
+        for (auto* row : {&nameSw_, &chatSw_}) {
+            overlay::Swatch& s = row->emplace_back();
+            s.label = c.english;
+            s.color = ToOverlay(c.rgb);
+        }
+        const int index = static_cast<int>(i);
+        nameSw_.back().onClick = [this, index](Ui& ui) { draft_.look.nameColor = index; Changed(); ui.Repaint(); };
+        chatSw_.back().onClick = [this, index](Ui& ui) { draft_.look.chatColor = index; Changed(); ui.Repaint(); };
+    }
+    beam_.label = "Light beam where it drops";
+    beam_.onChange = [this](bool on, Ui& ui) { draft_.look.beam = on; Changed(); ui.Repaint(); };
+    if (loaded_->session != nullptr) soundFiles_ = loaded_->session->SoundFiles();
+    sound_.translate = false;
+    sound_.options = {UiText("No sound")};
+    for (const std::string& f : soundFiles_) sound_.options.push_back(f);
+    sound_.onChange = [this](int index, Ui& ui) {
+        draft_.look.sound = index <= 0 ? std::string{} : soundFiles_[static_cast<std::size_t>(index - 1)];
+        Changed();
+        if (!draft_.look.sound.empty()) PlayPreview(ui);
+        ui.Repaint();
+    };
+    play_.label = "Play";
+    play_.onClick = [this](Ui& ui) { PlayPreview(ui); };
+    chat_.label = "Chat line when it drops";
+    chat_.onChange = [this](bool on, Ui& ui) { draft_.look.chat = on; Changed(); ui.Repaint(); };
+    chatText_.placeholder = "{name} is the item's name";
+    chatText_.onChange = [this](const std::string& text, Ui& ui) {
+        draft_.look.chatText = text.empty() ? std::string("{name}") : text;
+        draft_.look.chat = true;
+        Changed();
+        ui.Repaint();
+    };
+    for (std::size_t i = 0; i < 3; ++i) {
+        overlay::Chip& chip = pickFor_.emplace_back();
+        chip.label = kPickTargets[i];
+        const int t = static_cast<int>(i);
+        chip.onClick = [this, t](Ui& ui) { SetPickTarget(t); ui.Repaint(); };
+    }
+    picker_.onChange = [this](overlay::Rgb color, Ui& ui) {
+        const Rgb c = FromOverlay(color);
+        if (pickTarget_ == 0) draft_.look.border = c;
+        else if (pickTarget_ == 1) draft_.look.background = c;
+        else {
+            draft_.look.beam = true;
+            draft_.look.beamColor = c;
+        }
+        Changed();
+        ui.Repaint();
+    };
+
+    // 8 Check.
     checkLines_.drawRowBackground = false;
     checkLines_.rowGap = 0;
     checkLines_.paintRow = [this](Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
@@ -315,65 +432,183 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
     finish_.style = overlay::Button::Style::Primary;
     finish_.onClick = [this](Ui& ui) { Save(ui); };
 
-    // Start on the group of the first item (the hover key's item).
-    if (!draft_.bases.empty()) {
-        const gamedata::GroupRef ref = game_.groups.Of(draft_.bases.front());
-        for (std::size_t r = 0; r < groupRows_.size(); ++r)
-            if (groupRows_[r].group == ref.group && groupRows_[r].subgroup == std::max(ref.subgroup, 0)) groupList_.Select(static_cast<int>(r), nullptr);
-    }
-    RebuildBases();
+    chatText_.SetValue(draft_.look.chatText == "{name}" ? std::string{} : draft_.look.chatText);
+    for (std::size_t i = 0; i < soundFiles_.size(); ++i)
+        if (soundFiles_[i] == draft_.look.sound) sound_.selected = static_cast<int>(i) + 1;
+    if (sound_.selected < 0) sound_.selected = 0;
     Changed();
+    // The hover key's item: its list chosen in the items step.
+    if (PickCount(draft_) > 0) {
+        for (int c = 0; c < static_cast<int>(categories_.size()); ++c) {
+            bool has = false;
+            for (const Entry& e : categories_[static_cast<std::size_t>(c)].entries) has = has || Picked(e);
+            if (has) {
+                categoryList_.Select(c, nullptr);
+                break;
+            }
+        }
+        RebuildEntries();
+    }
     GoTo(Step::Action);
 }
 
-auto AddRuleView::Title() const -> std::string {
-    return editing_.empty() ? UiText("New rule") : UiFormat("Change your rule {0}", {editing_});
-}
+auto AddRuleView::Title() const -> std::string { return editing_.empty() ? UiText("New rule") : UiFormat("Change your rule {0}", {editing_}); }
 
-auto AddRuleView::GroupRowName(int row) const -> std::string {
-    return row >= 0 && row < static_cast<int>(groupRows_.size()) ? groupRows_[static_cast<std::size_t>(row)].name : std::string{};
+auto AddRuleView::ActionChip(DraftAction action) -> overlay::Chip& {
+    return action == DraftAction::Hide ? hide_ : action == DraftAction::Show ? show_ : always_;
 }
 
 auto AddRuleView::StepUsed(Step step) const -> bool {
+    const bool byBase = draft_.kind == ItemKind::Base || draft_.kind == ItemKind::Magic || draft_.kind == ItemKind::Rare;
     switch (step) {
-        case Step::Tier: return offer_.tiers || offer_.mythicals;
-        case Step::Rarity: return offer_.rarities.size() > 1;
-        case Step::Stats: return offer_.rarities.count(3) != 0 || offer_.rarities.count(4) != 0;
-        case Step::Levels: return !levelIds_.empty();
+        case Step::Items: return draft_.kind != ItemKind::None;
+        case Step::Tier: return byBase && (offer_.tiers || offer_.qualities);
+        case Step::Bonuses: return draft_.kind == ItemKind::Base || draft_.kind == ItemKind::Magic;
+        case Step::Levels: return draft_.action != DraftAction::AlwaysShow && !levelIds_.empty();
+        case Step::Look: return draft_.action == DraftAction::Show || draft_.action == DraftAction::AlwaysShow;
         default: return true;
     }
 }
 
 void AddRuleView::GoTo(Step step) {
     step_ = step;
-    if (step == Step::Stats) RebuildStats();
+    if (step == Step::Look) SetPickTarget(pickTarget_);
     ShowStep();
     SyncControls();
 }
 
-void AddRuleView::RebuildBases() {
-    baseRows_.clear();
+auto AddRuleView::Picked(const Entry& e) const -> bool {
+    switch (e.type) {
+        case Entry::Type::Base: return std::find(draft_.bases.begin(), draft_.bases.end(), e.code) != draft_.bases.end();
+        case Entry::Type::Coupon: return std::find(draft_.coupons.begin(), draft_.coupons.end(), e.code) != draft_.coupons.end();
+        case Entry::Type::Unique: return std::find(draft_.uniques.begin(), draft_.uniques.end(), e.row) != draft_.uniques.end();
+        case Entry::Type::SetItem: return std::find(draft_.setItems.begin(), draft_.setItems.end(), e.row) != draft_.setItems.end();
+    }
+    return false;
+}
+
+void AddRuleView::RebuildCategories() {
+    categories_.clear();
+    categoriesFor_ = draft_.kind;
+    const auto baseName = [this](const std::string& code) { return EntryName("itemCodes", Value::String(code), loaded_->context); };
+    switch (draft_.kind) {
+        case ItemKind::Base:
+        case ItemKind::Magic:
+        case ItemKind::Rare:
+        case ItemKind::Other: {
+            for (const gamedata::Group& group : game_.groups.All()) {
+                std::vector<Category> subs;
+                for (const gamedata::Subgroup& sub : group.subgroups) {
+                    Category c;
+                    c.name = gamedata::Groups::Name(sub, game_.strings, loaded_->language);
+                    for (const std::string& code : sub.bases) {
+                        const gamedata::Base* b = game_.bases.Find(code);
+                        if (b == nullptr || !KindAllows(draft_.kind, game_, *b)) continue;
+                        Entry e;
+                        e.type = Entry::Type::Base;
+                        e.code = code;
+                        e.name = baseName(code);
+                        e.tag = b->mythical ? UiText("Mythical") : UiText(TierWord(b->tier));
+                        c.entries.push_back(std::move(e));
+                    }
+                    if (!c.entries.empty()) subs.push_back(std::move(c));
+                }
+                if (subs.empty()) continue;
+                const std::string name = gamedata::Groups::Name(group, game_.strings, loaded_->language);
+                if (subs.size() == 1) {
+                    subs[0].name = name;
+                    categories_.push_back(std::move(subs[0]));
+                    continue;
+                }
+                categories_.push_back(Category{name, true, {}});
+                for (Category& c : subs) categories_.push_back(std::move(c));
+            }
+            break;
+        }
+        case ItemKind::Unique: {
+            std::map<int, Category> byTier;  // 1-3 normal..elite, 0 no tier
+            const char* names[] = {"Rings, amulets, charms, jewels and others", "Normal tier", "Exceptional tier", "Elite tier"};
+            for (const gamedata::Unique& u : game_.uniques.All()) {
+                if (u.disabled) continue;
+                Entry e;
+                e.type = Entry::Type::Unique;
+                e.row = u.row;
+                e.name = gamedata::Strings::Plain(game_.uniques.Name(u, game_.strings, loaded_->language));
+                if (e.name.empty()) continue;
+                e.tag = baseName(u.code);
+                byTier[static_cast<int>(TierOfUnique(game_, u.code))].entries.push_back(std::move(e));
+            }
+            for (int t : {1, 2, 3, 0}) {
+                Category c = std::move(byTier[t]);
+                c.name = UiText(names[t]);
+                std::sort(c.entries.begin(), c.entries.end(), [](const Entry& a, const Entry& b) { return a.name < b.name; });
+                if (!c.entries.empty()) categories_.push_back(std::move(c));
+            }
+            std::map<int, Category> coupons;
+            for (const Coupon& coupon : Coupons(game_)) {
+                Entry e;
+                e.type = Entry::Type::Coupon;
+                e.code = coupon.code;
+                e.name = baseName(coupon.code);
+                coupons[static_cast<int>(coupon.tier)].entries.push_back(std::move(e));
+            }
+            const char* couponNames[] = {"Ancient Coupons: other", "Ancient Coupons: Normal", "Ancient Coupons: Exceptional", "Ancient Coupons: Elite"};
+            for (int t : {1, 2, 3, 0}) {
+                Category c = std::move(coupons[t]);
+                c.name = UiText(couponNames[t]);
+                std::sort(c.entries.begin(), c.entries.end(), [](const Entry& a, const Entry& b) { return a.name < b.name; });
+                if (!c.entries.empty()) categories_.push_back(std::move(c));
+            }
+            break;
+        }
+        case ItemKind::Set: {
+            for (const gamedata::Set& set : game_.sets.All()) {
+                Category c;
+                c.name = gamedata::Strings::Plain(game_.sets.SetName(set, game_.strings, loaded_->language));
+                for (int row : set.items) {
+                    const gamedata::SetItem* item = game_.sets.Item(row);
+                    if (item == nullptr || item->disabled) continue;
+                    Entry e;
+                    e.type = Entry::Type::SetItem;
+                    e.row = row;
+                    e.name = gamedata::Strings::Plain(game_.sets.Name(*item, game_.strings, loaded_->language));
+                    e.tag = baseName(item->code);
+                    c.entries.push_back(std::move(e));
+                }
+                if (!c.entries.empty()) categories_.push_back(std::move(c));
+            }
+            std::sort(categories_.begin(), categories_.end(), [](const Category& a, const Category& b) { return a.name < b.name; });
+            break;
+        }
+        case ItemKind::None: break;
+    }
+    categoryList_.SetCount(static_cast<int>(categories_.size()));
+    categoryList_.Select(categories_.empty() ? -1 : (categories_[0].heading && categories_.size() > 1 ? 1 : 0), nullptr);
+    categoryList_.SetScroll(0);
+    RebuildEntries();
+}
+
+void AddRuleView::RebuildEntries() {
+    entries_.clear();
     const std::string query = itemSearch_.Value();
     if (!query.empty()) {
         const overlay::text::ParsedQuery parsed = overlay::text::ParseQuery(query);
-        for (const gamedata::Group& g : game_.groups.All())
-            for (const gamedata::Subgroup& s : g.subgroups)
-                for (const std::string& code : s.bases) {
-                    const std::string name = EntryName("itemCodes", Value::String(code), loaded_->context);
-                    if (overlay::text::Matches(parsed, overlay::text::SearchTextUtf8(name + "\n" + code)) && !Has(baseRows_, code))
-                        baseRows_.push_back(code);
-                }
+        for (const Category& c : categories_)
+            for (const Entry& e : c.entries)
+                if (overlay::text::Matches(parsed, overlay::text::SearchTextUtf8(e.name + "\n" + e.tag + "\n" + e.code))) entries_.push_back(e);
     } else {
-        const int row = groupList_.Selected();
-        if (row >= 0 && row < static_cast<int>(groupRows_.size())) {
-            const GroupRow& r = groupRows_[static_cast<std::size_t>(row)];
-            const gamedata::Group& g = game_.groups.All()[static_cast<std::size_t>(r.group)];
-            if (r.subgroup >= 0) baseRows_ = g.subgroups[static_cast<std::size_t>(r.subgroup)].bases;
-            else
-                for (const gamedata::Subgroup& s : g.subgroups) baseRows_.insert(baseRows_.end(), s.bases.begin(), s.bases.end());
+        const int row = categoryList_.Selected();
+        if (row >= 0 && row < static_cast<int>(categories_.size())) {
+            const Category& c = categories_[static_cast<std::size_t>(row)];
+            if (c.heading) {  // a group: all of its subgroups
+                for (std::size_t i = static_cast<std::size_t>(row) + 1; i < categories_.size() && !categories_[i].heading; ++i)
+                    entries_.insert(entries_.end(), categories_[i].entries.begin(), categories_[i].entries.end());
+            } else {
+                entries_ = c.entries;
+            }
         }
     }
-    baseList_.SetCount(static_cast<int>(baseRows_.size()));
+    entryList_.SetCount(static_cast<int>(entries_.size()));
 }
 
 void AddRuleView::RebuildStats() {
@@ -384,19 +619,29 @@ void AddRuleView::RebuildStats() {
     statList_.SetCount(static_cast<int>(statRows_.size()));
 }
 
-void AddRuleView::ToggleBase(int row, Ui& ui) {
-    if (row < 0 || row >= static_cast<int>(baseRows_.size())) return;
-    const std::string& code = baseRows_[static_cast<std::size_t>(row)];
-    const auto it = std::find(draft_.bases.begin(), draft_.bases.end(), code);
-    if (it != draft_.bases.end()) draft_.bases.erase(it);
-    else draft_.bases.push_back(code);
+void AddRuleView::ToggleEntry(int row, Ui& ui) {
+    if (row < 0 || row >= static_cast<int>(entries_.size())) return;
+    const Entry& e = entries_[static_cast<std::size_t>(row)];
+    const auto flip = [](auto& list, const auto& value) {
+        const auto it = std::find(list.begin(), list.end(), value);
+        if (it != list.end()) list.erase(it);
+        else list.push_back(value);
+    };
+    switch (e.type) {
+        case Entry::Type::Base: flip(draft_.bases, e.code); break;
+        case Entry::Type::Coupon: flip(draft_.coupons, e.code); break;
+        case Entry::Type::Unique: flip(draft_.uniques, e.row); break;
+        case Entry::Type::SetItem: flip(draft_.setItems, e.row); break;
+    }
     Changed();
     ui.Repaint();
 }
 
 void AddRuleView::ToggleStat(int row, Ui& ui) {
     if (row < 0 || row >= static_cast<int>(statRows_.size())) return;
-    const StatOption& o = offer_.stats[static_cast<std::size_t>(statRows_[static_cast<std::size_t>(row)])];
+    const std::size_t at = static_cast<std::size_t>(statRows_[static_cast<std::size_t>(row)]);
+    if (at >= offer_.stats.size()) return;
+    const StatOption o = offer_.stats[at];
     const auto it = std::find_if(draft_.stats.begin(), draft_.stats.end(), [&](const StatPick& p) { return p.stat == o.stat && p.param == o.param; });
     if (it != draft_.stats.end()) draft_.stats.erase(it);
     else draft_.stats.push_back(StatPick{o.stat, o.param, o.min});
@@ -405,21 +650,44 @@ void AddRuleView::ToggleStat(int row, Ui& ui) {
     ui.Repaint();
 }
 
-auto AddRuleView::RuleNow() const -> edit::OwnRule {
+void AddRuleView::SetPickTarget(int target) {
+    pickTarget_ = std::clamp(target, 0, 2);
+    const Look& look = draft_.look;
+    const Rgb color = pickTarget_ == 0 ? look.border.value_or(Rgb{255, 200, 0})
+                      : pickTarget_ == 1 ? look.background.value_or(Rgb{40, 40, 40})
+                                         : look.beamColor;
+    picker_.SetColor(ToOverlay(color));
+}
+
+void AddRuleView::PlayPreview(Ui&) {
+    if (draft_.look.sound.empty() || loaded_->session == nullptr || loaded_->source == nullptr) return;
+    // As the game plays it: the loot filter's volume for sound files times the filter's volume.
+    const int volume = loaded_->source->FileSoundVolume() * loaded_->session->SoundVolume() / 100;
+    loaded_->source->PlaySound(loaded_->session->SoundPath(draft_.look.sound), volume);
+}
+
+auto AddRuleView::RulesNow() const -> std::vector<edit::OwnRule> {
     // The title: what the rule is about and when, as the list says it.
-    edit::OwnRule draftRule = ToRule(draft_, game_, "x");
-    const RuleSummary s = Describe(draftRule.rule, loaded_->context);
+    const std::vector<edit::OwnRule> draftRules = ToRules(draft_, game_, "x");
+    if (draftRules.empty()) return {};
+    const RuleSummary s = Describe(draftRules.front().rule, loaded_->context);
     std::string title = overlay::StripColorCodes(s.what);
     for (const std::string& c : s.conditions) title += ", " + c;
     if (title.size() > 120) title = title.substr(0, 117) + "...";
-    return ToRule(draft_, game_, title);
+    return ToRules(draft_, game_, title);
+}
+
+auto AddRuleView::PreviewName() const -> std::string {
+    for (const Category& c : categories_)
+        for (const Entry& e : c.entries)
+            if (Picked(e)) return e.name;
+    return UiText("Item name");
 }
 
 auto AddRuleView::Summary() const -> std::string {
-    if (!Complete(draft_)) {
-        if (draft_.action == DraftAction::None) return UiText("Choose what should happen.");
-        return UiText("Choose at least one item.");
-    }
+    if (draft_.action == DraftAction::None) return UiText("Choose what should happen.");
+    if (draft_.kind == ItemKind::None) return UiText("Choose the kind of item.");
+    if (!Complete(draft_)) return UiText("Choose at least one item.");
     std::string line = summaryNow_.actionLabel + ": " + overlay::StripColorCodes(summaryNow_.what);
     for (const std::string& c : summaryNow_.conditions) line += "  ·  " + c;
     return line;
@@ -427,35 +695,38 @@ auto AddRuleView::Summary() const -> std::string {
 
 void AddRuleView::Changed() {
     Tidy(draft_, game_);
+    if (categoriesFor_ != draft_.kind) RebuildCategories();
     offer_ = Offer(draft_, game_);
-    if (step_ == Step::Stats) RebuildStats();
+    RebuildStats();  // the rows point into offer_.stats: rebuilt whenever it is (a stale row crashed on a rarity change)
+    checkText_.clear();
     if (Complete(draft_)) {
-        const edit::OwnRule own = RuleNow();
-        summaryNow_ = Describe(own.rule, loaded_->context);
-        checkText_.clear();
+        const std::vector<edit::OwnRule> rules = RulesNow();
+        summaryNow_ = Describe(rules.front().rule, loaded_->context);
         checkText_.push_back("#" + UiText("What it does"));
         switch (draft_.action) {
             case DraftAction::Hide: checkText_.push_back(UiText("Hides them on the ground")); break;
-            case DraftAction::Show: checkText_.push_back(UiText("Always shows them: no rule can hide them")); break;
-            default:
-                checkText_.push_back(UiFormat("A {0} border; never hidden", {UiText(HighlightColors()[static_cast<std::size_t>(draft_.color)].english)}));
-                if (draft_.beam) checkText_.push_back(UiText("A light beam where it drops"));
-                if (draft_.chat) checkText_.push_back(UiText("A chat line when it drops"));
-                break;
+            case DraftAction::Show: checkText_.push_back(UiText("Shows them on the levels below: no rule can hide them there")); break;
+            default: checkText_.push_back(UiText("Always shows them, on every level: no rule can hide them")); break;
         }
-        checkText_.push_back("#" + UiFormat("Items ({0})", {std::to_string(summaryNow_.whatAll.size())}));
-        for (const std::string& n : summaryNow_.whatAll) checkText_.push_back(n);
+        for (const std::string& e : summaryNow_.effects) checkText_.push_back(overlay::StripColorCodes(e));
+        std::vector<std::string> items;
+        for (const edit::OwnRule& r : rules) {
+            const RuleSummary part = Describe(r.rule, loaded_->context);
+            items.insert(items.end(), part.whatAll.begin(), part.whatAll.end());
+        }
+        checkText_.push_back("#" + UiFormat("Items ({0})", {std::to_string(items.size())}));
+        for (const std::string& n : items) checkText_.push_back(n);
         checkText_.push_back("#" + UiText("When"));
         if (summaryNow_.conditions.empty()) checkText_.push_back(UiText("Every time"));
         for (const std::string& c : summaryNow_.conditions) checkText_.push_back(c);
-        checkLines_.SetCount(static_cast<int>(checkText_.size()));
+        if (rules.size() > 1) checkText_.push_back(UiText("(Saved as two rules: one for the uniques, one for the coupons.)"));
     } else {
-        checkText_ = {Summary()};
-        checkLines_.SetCount(1);
+        checkText_.push_back(Summary());
     }
+    checkLines_.SetCount(static_cast<int>(checkText_.size()));
     summary_.text = Summary();
     status_.text.clear();
-    ShowStep();  // what a step shows can follow the choices (a highlight's colours)
+    ShowStep();
     SyncControls();
 }
 
@@ -467,33 +738,31 @@ void AddRuleView::SyncControls() {
     }
     hide_.selected = draft_.action == DraftAction::Hide;
     show_.selected = draft_.action == DraftAction::Show;
-    highlight_.selected = draft_.action == DraftAction::Highlight;
-    for (std::size_t i = 0; i < colors_.size(); ++i) colors_[i].selected = draft_.color == static_cast<int>(i);
-    beam_.on = draft_.beam;
-    chat_.on = draft_.chat;
+    always_.selected = draft_.action == DraftAction::AlwaysShow;
+    for (std::size_t i = 0; i < kinds_.size(); ++i) kinds_[i].selected = KindChoices()[i].first == draft_.kind;
 
-    if (draft_.bases.empty()) {
+    if (PickCount(draft_) == 0) {
         chosen_.text = UiText("Nothing chosen yet.");
     } else {
         std::vector<std::string> names;
-        for (const std::string& code : draft_.bases) names.push_back(EntryName("itemCodes", Value::String(code), loaded_->context));
-        chosen_.text = UiFormat("Chosen ({0}): {1}", {std::to_string(names.size()), JoinNames(names, 4)});
+        for (const Category& c : categories_)
+            for (const Entry& e : c.entries)
+                if (Picked(e) && std::find(names.begin(), names.end(), e.name) == names.end()) names.push_back(e.name);
+        chosen_.text = UiFormat("Chosen ({0}): {1}", {std::to_string(PickCount(draft_)), JoinNames(names, 4)});
     }
     for (std::size_t i = 0; i < 3; ++i) {
         tiers_[i].enabled = offer_.tierChoices.count(kTiers[i]) != 0;
         tiers_[i].on = tiers_[i].enabled && (draft_.tiers.empty() || draft_.tiers.count(kTiers[i]) != 0);
     }
-    for (std::size_t i = 0; i < 3; ++i) myth_[i].selected = draft_.mythical == static_cast<MythicalMode>(i);
-    for (std::size_t i = 0; i < rarities_.size(); ++i) {
-        const int q = RarityChoices()[i].first;
-        rarities_[i].enabled = offer_.rarities.count(q) != 0;
-        rarities_[i].on = draft_.rarities.count(q) != 0;
-    }
-    // The selected stat's "at least".
+    white_.on = draft_.baseQualities.empty() || draft_.baseQualities.count(2) != 0;
+    superior_.on = draft_.baseQualities.empty() || draft_.baseQualities.count(3) != 0;
+    for (std::size_t i = 0; i < 3; ++i) myth_[i].selected = draft_.mythical == static_cast<RuleDraft::Mythicals>(i);
+
+    // The selected bonus's "at least".
     const int row = statList_.Selected();
     const StatPick* pick = nullptr;
     const StatOption* option = nullptr;
-    if (row >= 0 && row < static_cast<int>(statRows_.size())) {
+    if (row >= 0 && row < static_cast<int>(statRows_.size()) && statRows_[static_cast<std::size_t>(row)] < static_cast<int>(offer_.stats.size())) {
         option = &offer_.stats[static_cast<std::size_t>(statRows_[static_cast<std::size_t>(row)])];
         for (const StatPick& p : draft_.stats)
             if (p.stat == option->stat && p.param == option->param) pick = &p;
@@ -507,42 +776,71 @@ void AddRuleView::SyncControls() {
     atLeast_.SetValue(pick != nullptr ? pick->atLeast : (option != nullptr ? option->min : 0));
     for (std::size_t i = 0; i < levels_.size(); ++i)
         levels_[i].on = draft_.levels.empty() || std::find(draft_.levels.begin(), draft_.levels.end(), levelIds_[i]) != draft_.levels.end();
+
+    const Look& look = draft_.look;
+    borderNone_.selected = !look.border;
+    backNone_.selected = !look.background;
+    nameGame_.selected = look.nameColor < 0;
+    for (std::size_t i = 0; i < Swatches().size(); ++i) {
+        borderSw_[i].selected = look.border && *look.border == Swatches()[i].rgb;
+        backSw_[i].selected = look.background && *look.background == Swatches()[i].rgb;
+        beamSw_[i].selected = look.beam && look.beamColor == Swatches()[i].rgb;
+    }
+    for (std::size_t i = 0; i < NameColors().size(); ++i) {
+        nameSw_[i].selected = look.nameColor == static_cast<int>(i);
+        chatSw_[i].selected = look.chatColor == static_cast<int>(i);
+    }
+    beam_.on = look.beam;
+    chat_.on = look.chat;
+    play_.enabled = !look.sound.empty();
+    for (std::size_t i = 0; i < 3; ++i) pickFor_[i].selected = pickTarget_ == static_cast<int>(i);
     finish_.enabled = Complete(draft_);
-    int last = kSteps - 1;
-    next_.visible = static_cast<int>(step_) < last;
+    next_.visible = static_cast<int>(step_) < kSteps - 1;
 }
 
 void AddRuleView::ShowStep() {
     const auto on = [this](Step s, std::initializer_list<Widget*> widgets) {
         for (Widget* w : widgets) w->visible = step_ == s;
     };
-    on(Step::Action, {&hide_, &show_, &highlight_});
-    const bool colours = step_ == Step::Action && draft_.action == DraftAction::Highlight;
-    for (overlay::Chip& c : colors_) c.visible = colours;
-    for (Widget* w : std::initializer_list<Widget*>{&colorLabel_, &beam_, &chat_}) w->visible = colours;
-    on(Step::Items, {&itemSearch_, &groupList_, &baseList_, &all_, &none_, &chosen_});
-    for (overlay::Checkbox& b : tiers_) b.visible = step_ == Step::Tier;
-    mythLabel_.visible = step_ == Step::Tier && offer_.mythicals;
+    on(Step::Action, {&hide_, &show_, &always_});
+    for (overlay::Chip& c : kinds_) c.visible = step_ == Step::Kind;
+    on(Step::Items, {&itemSearch_, &categoryList_, &entryList_, &all_, &none_, &chosen_});
+    const bool tier = step_ == Step::Tier;
+    for (overlay::Checkbox& b : tiers_) b.visible = tier && offer_.tierChoices.size() > 0;
+    qualityLabel_.visible = tier && offer_.qualities;
+    white_.visible = qualityLabel_.visible;
+    superior_.visible = qualityLabel_.visible;
+    mythLabel_.visible = tier && offer_.mythicals;
     for (overlay::Chip& c : myth_) c.visible = mythLabel_.visible;
-    for (overlay::Checkbox& b : rarities_) b.visible = step_ == Step::Rarity;
-    const bool stats = step_ == Step::Stats && offer_.statsPossible;
+    const bool stats = step_ == Step::Bonuses && offer_.statsPossible;
     for (Widget* w : std::initializer_list<Widget*>{&statSearch_, &statList_, &atLeastLabel_, &atLeast_}) w->visible = stats;
     for (overlay::Checkbox& b : levels_) b.visible = step_ == Step::Levels;
+    const bool look = step_ == Step::Look;
+    for (Widget* w : std::initializer_list<Widget*>{&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &pickLabel_, &borderNone_, &backNone_,
+                                                    &nameGame_, &beam_, &chat_, &sound_, &play_, &chatText_, &picker_})
+        w->visible = look;
+    for (auto* row : {&borderSw_, &backSw_, &nameSw_, &beamSw_, &chatSw_})
+        for (overlay::Swatch& s : *row) s.visible = look;
+    for (overlay::Chip& c : pickFor_) c.visible = look;
     checkLines_.visible = step_ == Step::Check;
     heading_.text = kStepHeadings[static_cast<int>(step_)];
-    hint_.text = step_ == Step::Stats && !offer_.statsPossible ? offer_.statsWhy : kStepHints[static_cast<int>(step_)];
+    hint_.text = step_ == Step::Bonuses && !offer_.statsPossible
+                     ? (offer_.statsWhy.empty() ? std::string("These items have no bonuses to choose.") : offer_.statsWhy)
+                     : kStepHints[static_cast<int>(step_)];
 }
 
 void AddRuleView::Save(Ui& ui) {
     if (!Complete(draft_) || loaded_->session == nullptr) return;
-    const edit::OwnRule own = RuleNow();
+    const std::vector<edit::OwnRule> rules = RulesNow();
     const std::string editing = editing_;
     std::shared_ptr<bool> alive = alive_;
     CommitChange(
         ui, loaded_, alive_,
-        [own, editing](edit::Session& s) {
-            if (editing.empty()) s.AddOwn(own);
-            else s.ReplaceOwn(editing, own);
+        [rules, editing](edit::Session& s) {
+            for (std::size_t i = 0; i < rules.size(); ++i) {
+                if (i == 0 && !editing.empty()) s.ReplaceOwn(editing, rules[i]);
+                else s.AddOwn(rules[i]);
+            }
         },
         [this, alive](Ui& u, bool ok, bool, const std::string& error) {
             if (!*alive) return;
@@ -577,15 +875,15 @@ void AddRuleView::Layout(const LayoutContext& c) {
     const int chipH = std::max(m.S(28), m.LineHeight(Font::Small) + m.S(12));
     const int rowH = std::max(m.S(28), m.LineHeight(Font::Body) + m.S(8));
     const int buttonH = std::max(m.S(32), m.LineHeight(Font::Body) + m.S(12));
+    const int small = m.LineHeight(Font::Small) + m.S(4);
 
-    // The steps along the top.
     int x = area.left;
     for (overlay::Chip& chip : stepChips_) {
         const int w = m.TextWidth(UiText(chip.label), Font::Small) + m.S(20);
         chip.box = Box{x, area.top, x + w, area.top + chipH};
         x += w + m.S(6);
     }
-    int y = area.top + chipH + m.S(14);
+    int y = area.top + chipH + m.S(12);
     heading_.box = Box{area.left, y, area.right, y + m.LineHeight(Font::Bold) + m.S(4)};
     heading_.color = theme.headerGold;
     y = heading_.box.bottom;
@@ -593,39 +891,33 @@ void AddRuleView::Layout(const LayoutContext& c) {
     hint_.color = theme.dim;
     y = hint_.box.bottom + gap;
 
-    // The bottom: the rule in one line, the status, the buttons.
     back_.box = Box{area.left, area.bottom - buttonH, area.left + m.S(120), area.bottom};
     const int finishW = m.TextWidth(UiText(finish_.label), Font::Body) + m.S(40);
     finish_.box = Box{area.right - finishW, area.bottom - buttonH, area.right, area.bottom};
     next_.box = Box{finish_.box.left - gap - m.S(120), area.bottom - buttonH, finish_.box.left - gap, area.bottom};
     status_.box = Box{back_.box.right + gap, area.bottom - buttonH, next_.box.left - gap, area.bottom};
     status_.color = status_.text.rfind(UiText("Not saved"), 0) == 0 ? theme.danger : theme.dim;
-    summary_.box = Box{area.left, back_.box.top - gap - m.LineHeight(Font::Small) - m.S(6), area.right, back_.box.top - gap};
+    summary_.box = Box{area.left, back_.box.top - gap - small, area.right, back_.box.top - gap};
     summary_.color = Complete(draft_) ? theme.gold : theme.dim;
-    const int bottom = summary_.box.top - gap;
-    const Box body{area.left, y, area.right, bottom};
+    const Box body{area.left, y, area.right, summary_.box.top - gap};
+    previewBox_ = Box{};
 
     switch (step_) {
         case Step::Action: {
             int cx = body.left;
-            for (overlay::Chip* chip : {&hide_, &show_, &highlight_}) {
-                const int w = std::max(m.S(170), m.TextWidth(UiText(chip->label), Font::Body) + m.S(30));
+            for (overlay::Chip* chip : {&hide_, &show_, &always_}) {
+                const int w = std::max(m.S(150), m.TextWidth(UiText(chip->label), Font::Body) + m.S(30));
                 chip->box = Box{cx, body.top, cx + w, body.top + buttonH + m.S(8)};
                 cx += w + gap;
             }
-            int cy = body.top + buttonH + m.S(8) + m.S(18);
-            colorLabel_.box = Box{body.left, cy, body.right, cy + m.LineHeight(Font::Small) + m.S(4)};
-            cy = colorLabel_.box.bottom + m.S(4);
-            cx = body.left;
-            for (overlay::Chip& chip : colors_) {
-                const int w = std::max(m.S(70), m.TextWidth(UiText(chip.label), Font::Small) + m.S(20));
-                chip.box = Box{cx, cy, cx + w, cy + chipH};
-                cx += w + m.S(6);
+            break;
+        }
+        case Step::Kind: {
+            int cy = body.top;
+            for (overlay::Chip& chip : kinds_) {
+                chip.box = Box{body.left, cy, body.left + std::min(body.Width(), m.S(380)), cy + buttonH + m.S(4)};
+                cy += buttonH + m.S(4) + m.S(6);
             }
-            cy += chipH + gap;
-            beam_.box = Box{body.left, cy, body.left + m.S(420), cy + rowH};
-            cy += rowH;
-            chat_.box = Box{body.left, cy, body.left + m.S(420), cy + rowH};
             break;
         }
         case Step::Items: {
@@ -633,28 +925,35 @@ void AddRuleView::Layout(const LayoutContext& c) {
             const int listTop = itemSearch_.box.bottom + gap;
             const int chosenH = m.LineHeight(Font::Small) * 2 + m.S(6);
             const int listBottom = body.bottom - chosenH - gap;
-            const int leftW = std::clamp(body.Width() * 30 / 100, m.S(180), m.S(300));
-            groupList_.box = Box{body.left, listTop, body.left + leftW, listBottom};
-            groupList_.rowHeight = rowH;
+            const int leftW = std::clamp(body.Width() * 30 / 100, m.S(180), m.S(320));
+            categoryList_.box = Box{body.left, listTop, body.left + leftW, listBottom};
+            categoryList_.rowHeight = rowH;
             const int buttonsW = m.S(110);
-            baseList_.box = Box{groupList_.box.right + gap, listTop, body.right - buttonsW - gap, listBottom};
-            baseList_.rowHeight = rowH;
+            entryList_.box = Box{categoryList_.box.right + gap, listTop, body.right - buttonsW - gap, listBottom};
+            entryList_.rowHeight = rowH;
             all_.box = Box{body.right - buttonsW, listTop, body.right, listTop + buttonH};
             none_.box = Box{body.right - buttonsW, all_.box.bottom + m.S(6), body.right, all_.box.bottom + m.S(6) + buttonH};
             chosen_.box = Box{body.left, listBottom + gap, body.right, body.bottom};
-            chosen_.flags = kLeft;
             chosen_.color = theme.text;
             break;
         }
         case Step::Tier: {
             int cy = body.top;
+            if (qualityLabel_.visible) {
+                qualityLabel_.box = Box{body.left, cy, body.right, cy + small};
+                cy += small;
+                white_.box = Box{body.left, cy, body.left + m.S(320), cy + rowH};
+                cy += rowH;
+                superior_.box = Box{body.left, cy, body.left + m.S(320), cy + rowH};
+                cy += rowH + m.S(14);
+            }
             for (overlay::Checkbox& box : tiers_) {
                 box.box = Box{body.left, cy, body.left + m.S(320), cy + rowH};
                 cy += rowH;
             }
-            cy += m.S(16);
-            mythLabel_.box = Box{body.left, cy, body.right, cy + m.LineHeight(Font::Small) + m.S(4)};
-            cy = mythLabel_.box.bottom + m.S(4);
+            cy += m.S(14);
+            mythLabel_.box = Box{body.left, cy, body.right, cy + small};
+            cy += small;
             int cx = body.left;
             for (overlay::Chip& chip : myth_) {
                 const int w = m.TextWidth(UiText(chip.label), Font::Small) + m.S(24);
@@ -663,15 +962,7 @@ void AddRuleView::Layout(const LayoutContext& c) {
             }
             break;
         }
-        case Step::Rarity: {
-            int cy = body.top;
-            for (overlay::Checkbox& box : rarities_) {
-                box.box = Box{body.left, cy, body.left + m.S(320), cy + rowH};
-                cy += rowH;
-            }
-            break;
-        }
-        case Step::Stats: {
+        case Step::Bonuses: {
             statSearch_.box = Box{body.left, body.top, body.right, body.top + std::max(m.S(30), m.LineHeight(Font::Body) + m.S(10))};
             const int numberH = std::max(m.S(30), m.LineHeight(Font::Body) + m.S(10));
             atLeast_.box = Box{body.left + m.S(90), body.bottom - numberH, body.left + m.S(260), body.bottom};
@@ -688,6 +979,62 @@ void AddRuleView::Layout(const LayoutContext& c) {
             }
             break;
         }
+        case Step::Look: {
+            const int split = body.left + body.Width() * 60 / 100;
+            const Box left{body.left, body.top, split - gap * 2, body.bottom};
+            const Box right{split, body.top, body.right, body.bottom};
+            const int swH = std::max(m.S(24), m.LineHeight(Font::Small) + m.S(8));
+            int cy = left.top;
+            const auto row = [&](overlay::Label* label, overlay::Widget* first, auto& swatches) {
+                if (label != nullptr) {
+                    label->box = Box{left.left, cy, left.right, cy + small};
+                    cy += small;
+                }
+                int cx = left.left;
+                if (first != nullptr) {
+                    const int w = m.S(86);
+                    first->box = Box{cx, cy, cx + w, cy + swH};
+                    cx += w + m.S(4);
+                }
+                const int count = static_cast<int>(swatches.size());
+                const int w = count > 0 ? std::max(m.S(20), (left.right - cx - m.S(3) * (count - 1)) / count) : 0;
+                for (overlay::Swatch& s : swatches) {
+                    s.box = Box{cx, cy, cx + w, cy + swH};
+                    cx += w + m.S(3);
+                }
+                cy += swH + m.S(8);
+            };
+            row(&borderLabel_, &borderNone_, borderSw_);
+            row(&backLabel_, &backNone_, backSw_);
+            row(&nameLabel_, &nameGame_, nameSw_);
+            beam_.box = Box{left.left, cy, left.right, cy + rowH};
+            cy += rowH;
+            row(nullptr, nullptr, beamSw_);
+            soundLabel_.box = Box{left.left, cy, left.right, cy + small};
+            cy += small;
+            const int dropH = std::max(m.S(30), m.LineHeight(Font::Body) + m.S(10));
+            sound_.box = Box{left.left, cy, left.left + std::min(m.S(300), left.Width() - m.S(100)), cy + dropH};
+            play_.box = Box{sound_.box.right + gap, cy, sound_.box.right + gap + m.S(90), cy + dropH};
+            cy += dropH + m.S(8);
+            chat_.box = Box{left.left, cy, left.left + m.S(260), cy + rowH};
+            chatText_.box = Box{chat_.box.right + gap, cy, left.right, cy + rowH};
+            cy += rowH + m.S(4);
+            row(nullptr, nullptr, chatSw_);
+            // Right: the picture, then any colour.
+            previewBox_ = Box{right.left, right.top, right.right, right.top + right.Height() * 42 / 100};
+            int ry = previewBox_.bottom + gap;
+            pickLabel_.box = Box{right.left, ry, right.right, ry + small};
+            ry += small;
+            int cx = right.left;
+            for (overlay::Chip& chip : pickFor_) {
+                const int w = m.TextWidth(UiText(chip.label), Font::Small) + m.S(20);
+                chip.box = Box{cx, ry, cx + w, ry + chipH};
+                cx += w + m.S(4);
+            }
+            ry += chipH + gap;
+            picker_.box = Box{right.left, ry, right.right, right.bottom};
+            break;
+        }
         case Step::Check: {
             checkLines_.box = body;
             checkLines_.rowHeight = std::max(m.S(26), m.LineHeight(Font::Bold) + m.S(8));
@@ -699,19 +1046,79 @@ void AddRuleView::Layout(const LayoutContext& c) {
 void AddRuleView::FocusList(std::vector<Widget*>& out) {
     out.clear();
     for (overlay::Chip& c : stepChips_) out.push_back(&c);
-    for (Widget* w : std::initializer_list<Widget*>{&heading_, &hint_, &hide_, &show_, &highlight_, &colorLabel_}) out.push_back(w);
-    for (overlay::Chip& c : colors_) out.push_back(&c);
-    for (Widget* w : std::initializer_list<Widget*>{&beam_, &chat_, &itemSearch_, &groupList_, &baseList_, &all_, &none_, &chosen_}) out.push_back(w);
+    for (Widget* w : std::initializer_list<Widget*>{&heading_, &hint_, &hide_, &show_, &always_}) out.push_back(w);
+    for (overlay::Chip& c : kinds_) out.push_back(&c);
+    for (Widget* w : std::initializer_list<Widget*>{&itemSearch_, &categoryList_, &entryList_, &all_, &none_, &chosen_, &qualityLabel_, &white_, &superior_})
+        out.push_back(w);
     for (overlay::Checkbox& b : tiers_) out.push_back(&b);
     out.push_back(&mythLabel_);
     for (overlay::Chip& c : myth_) out.push_back(&c);
-    for (overlay::Checkbox& b : rarities_) out.push_back(&b);
     for (Widget* w : std::initializer_list<Widget*>{&statSearch_, &statList_, &atLeastLabel_, &atLeast_}) out.push_back(w);
     for (overlay::Checkbox& b : levels_) out.push_back(&b);
+    out.push_back(&borderLabel_);
+    out.push_back(&borderNone_);
+    for (overlay::Swatch& s : borderSw_) out.push_back(&s);
+    out.push_back(&backLabel_);
+    out.push_back(&backNone_);
+    for (overlay::Swatch& s : backSw_) out.push_back(&s);
+    out.push_back(&nameLabel_);
+    out.push_back(&nameGame_);
+    for (overlay::Swatch& s : nameSw_) out.push_back(&s);
+    out.push_back(&beam_);
+    for (overlay::Swatch& s : beamSw_) out.push_back(&s);
+    for (Widget* w : std::initializer_list<Widget*>{&soundLabel_, &sound_, &play_, &chat_, &chatText_}) out.push_back(w);
+    for (overlay::Swatch& s : chatSw_) out.push_back(&s);
+    out.push_back(&pickLabel_);
+    for (overlay::Chip& c : pickFor_) out.push_back(&c);
+    out.push_back(&picker_);
     for (Widget* w : std::initializer_list<Widget*>{&checkLines_, &summary_, &status_, &back_, &next_, &finish_}) out.push_back(w);
 }
 
-void AddRuleView::Paint(Canvas&) {}
+void AddRuleView::Paint(Canvas& canvas) {
+    if (step_ != Step::Look || previewBox_.Width() <= 0) return;
+    // The label on the ground: a dark floor, the beam rising behind, the label with its background, border and name.
+    const overlay::Theme& theme = canvas.GetTheme();
+    const Box& p = previewBox_;
+    canvas.Fill(p, overlay::Rgb{22, 20, 18});
+    canvas.Frame(p, theme.border);
+    const Look& look = draft_.look;
+    const std::string name = PreviewName();
+    const int textW = canvas.TextWidth(name, Font::Bold);
+    const int labelW = textW + canvas.S(20);
+    const int labelH = canvas.LineHeight(Font::Bold) + canvas.S(8);
+    const int cx = p.CentreX();
+    const int labelTop = p.bottom - labelH - p.Height() / 5;
+    if (look.beam) {
+        const overlay::Rgb beam = ToOverlay(look.beamColor);
+        const int w = canvas.S(10);
+        for (int i = 0; i < 6; ++i) {
+            const Box band{cx - w / 2 - i * canvas.S(2), p.top + canvas.S(6), cx + w / 2 + i * canvas.S(2), labelTop};
+            canvas.FillAlpha(band, beam, static_cast<std::uint8_t>(60 - i * 9));
+        }
+    }
+    const Box label{cx - labelW / 2, labelTop, cx + labelW / 2, labelTop + labelH};
+    if (look.background) canvas.FillAlpha(label, ToOverlay(*look.background), 230);
+    else canvas.FillAlpha(label, overlay::Rgb{0, 0, 0}, 170);
+    if (look.border) {
+        const overlay::Rgb border = ToOverlay(*look.border);
+        canvas.Frame(label, border);
+        canvas.Frame(label.Inflated(-1), border);
+    }
+    const overlay::Rgb ink = look.nameColor >= 0 ? ToOverlay(NameColors()[static_cast<std::size_t>(look.nameColor)].rgb) : KindColor(draft_.kind);
+    canvas.Text(name, label, ink, Font::Bold, kCenter | kVCenter | kSingleLine | kNoHighlight);
+    // The chat line under it.
+    if (look.chat) {
+        std::string line = look.chatText;
+        const std::size_t at = line.find("{name}");
+        if (at != std::string::npos) line.replace(at, 6, name);
+        const NameColor& c = NameColors()[static_cast<std::size_t>(std::clamp(look.chatColor, 0, static_cast<int>(NameColors().size()) - 1))];
+        canvas.Text(line, Box{p.left + canvas.S(10), p.bottom - canvas.S(6) - canvas.LineHeight(Font::Small), p.right - canvas.S(10), p.bottom - canvas.S(4)},
+                    ToOverlay(c.rgb), Font::Small, kSingleLine | kNoHighlight);
+    }
+    if (!look.sound.empty())
+        canvas.Text(UiFormat("Sound: {0}", {look.sound}), Box{p.left + canvas.S(10), p.top + canvas.S(6), p.right - canvas.S(10), p.top + canvas.S(6) + canvas.LineHeight(Font::Small)},
+                    theme.dim, Font::Small, kSingleLine | kNoHighlight);
+}
 
 void AddRuleView::HelpRows(const Widget*, std::vector<overlay::HelpRow>& out) const {
     out.push_back({overlay::Glyph::LBRB, "", "Previous / next step"});

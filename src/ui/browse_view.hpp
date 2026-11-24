@@ -11,6 +11,7 @@
 
 #include "color_text.hpp"
 #include "document.h"
+#include "pickers.hpp"
 #include "rule_text.h"
 #include "source.h"
 #include "view.hpp"
@@ -34,6 +35,7 @@ struct Loaded {
     gamedata::Language language = gamedata::Language::enUS;
     FilterInfo info;
     std::shared_ptr<edit::Session> session;  // nullptr: read only (sessionError says why)
+    std::shared_ptr<Source> source;
     std::string sessionError;
     document::Document doc;
     std::vector<RuleSummary> rules;   // one per doc.Rules()
@@ -106,6 +108,8 @@ public:
     auto Levels() -> overlay::Dropdown& { return level_; }
     auto GameSettings() -> overlay::Button& { return gameSettings_; }
     auto AddRule() -> overlay::Button& { return addRule_; }
+    auto Volume() -> overlay::Slider& { return volume_; }
+    auto VolumeTest() -> overlay::Button& { return volumeTest_; }
     void ChooseSection(int row);  // a row of the left list, as showing
     void ToggleRow(int row);      // opens or closes a part
 
@@ -128,6 +132,8 @@ private:
     [[nodiscard]] auto ActiveOnLevel(int rule) const -> bool;
     [[nodiscard]] auto ChosenLevel() const -> std::int64_t;  // 0: every level
     void PaintRuleRow(Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState& state);
+    void SaveVolume(int volume, Ui& ui);  // the filter's soundVolume, in the player's version
+    void PlayTest();                       // a sound of the filter at its volume, as the game plays it
     void PaintSectionRow(Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState& state);
 
     std::shared_ptr<Source> source_;
@@ -149,6 +155,11 @@ private:
     DraftMaker pendingDraft_;  // the hover key's rule, waiting for the filter
     bool pendingRule_ = false;
     overlay::Label info_;
+    overlay::Label volumeLabel_;
+    overlay::Slider volume_;
+    overlay::Label volumeValue_;
+    overlay::Button volumeTest_;
+    std::string volumeError_;  // the last volume save failed: why
     overlay::ListView sectionList_;
     overlay::Label count_;
     overlay::ListView ruleList_;

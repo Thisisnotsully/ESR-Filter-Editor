@@ -156,15 +156,20 @@ Build and install with `build-and-install.bat` (game and launcher closed). With 
 
 Build and install with `build-and-install.bat` (game and launcher closed).
 
-- [ ] **+ Add a rule** in the editor's top bar opens the steps. The step chips along the top jump between steps; LB / RB go back and forth with a controller.
-- [ ] 1 What happens: Hide them / Always show them / Highlight them. Highlight shows the colours, the light beam and the chat line.
-- [ ] 2 Items: a group on the left, its items on the right (tick with a click, Enter or A). The search finds items by name across every group. "Chosen (N)" lists what is ticked.
-- [ ] 3 Tier: only Normal / Exceptional / Elite the items have; Mythical bases: with, without, only (only when a Mythical is ticked). The step is skipped when there is nothing to choose.
-- [ ] 4 Rarity: only the rarities the items come in.
-- [ ] 5 Stats: with only Superior (or only Magic) ticked, the bonuses those items can roll; tick one, set "At least". With both, or neither, it says what to choose.
-- [ ] 6 Levels, 7 the rule in words. **Add rule**: back to the list, where the rule shows as yours ("U001").
-- [ ] In game: a hide rule hides even what Sully's filter always shows; an always-show rule keeps an item Sully hides; a highlight keeps its colour (it is last in the filter) and is never hidden.
-- [ ] A rule with stats leaves unidentified items alone.
-- [ ] Your rule's card: **Rule is on**, **Change this rule** (the steps again, filled in), **Delete this rule** (asks; Cancel is first).
-- [ ] The edit-item key on a ground item: the steps open with the item chosen. On a Superior item with a bonus, the bonus is ticked at its value. On an unidentified item, no stats. Nothing under the cursor: nothing happens. Right after the game starts (data still loading) it still opens, a moment later.
-- [ ] Your version's file: a "My Rules" part first (your hides and shows, and a show-only copy of each highlight) and a "My Highlights" part last.
+- [ ] **+ Add a rule** in the editor's top bar opens the steps. The step chips along the top jump between steps (steps that do not apply are greyed out); LB / RB go back and forth with a controller.
+- [ ] 1 What happens: **Hide**, **Show** or **Always Show (all strictness levels)**.
+- [ ] 2 Kind: White and superior bases / Magic items / Rare items / Unique items / Set items / Runes, gems and other items. Choosing one goes straight to its items.
+- [ ] 3 Items: only items of that kind. Bases, magic and rare: groups on the left (only bases that come in that rarity: rings and amulets for magic and rare, not for bases). Unique: Normal / Exceptional / Elite tier, rings, amulets, charms and jewels, then Ancient Coupons by Normal / Exceptional / Elite. Set: one list per set. The search finds items across all lists.
+- [ ] 4 Tier (bases, magic, rare only): Normal / Exceptional / Elite the items have; Mythical bases with / without / only; White and Superior for bases. Skipped when there is nothing to choose.
+- [ ] 5 Bonuses (bases with only Superior ticked, and magic): the bonuses they can roll, by their real names ("+4 to Teleport", "Level 20 Might Aura When Equipped", no "item_aura" or "item_nonclassskill"). Tick one, set "At least". Rare, unique and set: no bonuses step.
+- [ ] Magic, tick a bonus, then go back and choose Unique: no crash, and nothing of the magic choice is left.
+- [ ] 6 Levels (Hide and Show only; Always Show is on every level).
+- [ ] 7 Look (Show and Always Show only): border, background and name colour (buttons in their colour, or None / the game's), a light beam and its colour, a drop sound with **Play**, a chat line (`{name}` is the item's name) in a colour. **Any colour for** Border / Background / Light beam opens a colour square and hue strip (mouse drag; arrows, Page Up / Down; D-pad). The picture on the right shows the label as it will look and updates at once.
+- [ ] The sound preview plays at the volume the game will use (the loot filter's `file_sound_volume`, 80 unless changed, times the filter volume). Choosing a sound plays it once.
+- [ ] 8 the rule in words. **Add rule**: back to the list, where the rule shows as yours ("U001").
+- [ ] In game: a hide rule hides even what Sully's filter always shows; a Show / Always Show rule keeps an item Sully hides, with its look (the look is last in the filter so its colours win), and is never hidden, even by another of your own hide rules.
+- [ ] A rule with bonuses leaves unidentified items alone.
+- [ ] Your rule's card: **Rule is on**, **Change this rule** (the steps again, filled in; a Show rule on every level comes back as Always Show, which does the same), **Delete this rule** (asks; Cancel is first).
+- [ ] The edit-item key on a ground item: the steps open with the item chosen and its kind set. A unique or set item opens on that exact item; an Ancient Coupon as a unique. On a Superior item with a bonus, the bonus is ticked at its value. On an unidentified item, no stats. Nothing under the cursor: nothing happens. Right after the game starts (data still loading) it still opens, a moment later.
+- [ ] **Filter volume** on the main window: drag it, or Left / Right, or the D-pad. It is saved in your version when you let go (the first time it asks to make your version; no puts it back) and plays a sound at the new volume. **Test** plays it again. The volume is the filter's `soundVolume`: every sound of the filter gets louder or quieter.
+- [ ] Your version's file: a "My Rules" part first (your shows, the show-only copy of each Show / Always Show rule with a look, then your hides) and a "My Highlights" part last.

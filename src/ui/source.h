@@ -43,6 +43,10 @@ public:
     virtual auto ReadFile(const std::string& path, std::string& out) -> bool = 0;
     // The loot filter's filters folder and the mod's own (for the player's copy and its changes).
     virtual auto Folders() -> edit::Folders = 0;
+    // Plays a sound file once, at a volume 0-100 (the sound previews).
+    virtual void PlaySound(const std::string& path, int volume) = 0;
+    // The loot filter's own volume for sound files (its file_sound_volume, 80 when not set), 0-100.
+    virtual auto FileSoundVolume() -> int = 0;
     // Closes the editor and opens the game's own loot filter screen.
     virtual void OpenGameSettings() = 0;
 };

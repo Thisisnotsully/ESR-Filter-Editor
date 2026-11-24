@@ -1,6 +1,7 @@
 #include "browse_view.hpp"
 
 #include <algorithm>
+#include <initializer_list>
 #include <set>
 
 #include "add_rule_view.hpp"
@@ -13,16 +14,16 @@ namespace esrfe::ui {
 
 using namespace overlay::text_flags;
 using overlay::Font;
-using overlay::Rgb;
+
 using overlay::UiFormat;
 using overlay::UiText;
 
-auto ActionColor(Action action, const overlay::Theme& theme) -> Rgb {
+auto ActionColor(Action action, const overlay::Theme& theme) -> overlay::Rgb {
     switch (action) {
         case Action::Hide: return theme.danger;
-        case Action::Show: return Rgb{96, 176, 92};
+        case Action::Show: return overlay::Rgb{96, 176, 92};
         case Action::Highlight: return theme.gold;
-        case Action::Rename: return Rgb{112, 152, 224};
+        case Action::Rename: return overlay::Rgb{112, 152, 224};
         case Action::Other: break;
     }
     return theme.dim;
@@ -84,8 +85,10 @@ auto Loaded::Build(std::string text) -> bool {
 namespace {
 
 // Reads and describes the filter. Runs on the overlay's UI thread (729 rules: a few milliseconds).
-auto Load(Source& source, const FilterInfo& info, std::shared_ptr<const gamedata::GameData> game) -> std::shared_ptr<Loaded> {
+auto Load(const std::shared_ptr<Source>& sourcePtr, const FilterInfo& info, std::shared_ptr<const gamedata::GameData> game) -> std::shared_ptr<Loaded> {
+    Source& source = *sourcePtr;
     auto loaded = std::make_shared<Loaded>();
+    loaded->source = sourcePtr;
     loaded->info = info;
     loaded->game = std::move(game);
     loaded->language = source.Language();
@@ -152,6 +155,24 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
     addRule_.label = "+ Add a rule";
     addRule_.style = overlay::Button::Style::Primary;
     addRule_.onClick = [this](Ui& ui) { StartRule(ui, nullptr); };
+
+    // The filter's volume: saved in the player's version when the slider stops, heard at once.
+    volumeLabel_.text = "Filter volume";
+    volumeLabel_.font = Font::Small;
+    volumeLabel_.flags = kRight | kVCenter | kSingleLine;
+    volumeValue_.translate = false;
+    volumeValue_.font = Font::Small;
+    volumeValue_.flags = kLeft | kVCenter | kSingleLine;
+    volume_.minimum = 0;
+    volume_.maximum = 100;
+    volume_.step = 5;
+    volume_.onChange = [this](int v, Ui& ui) {
+        volumeValue_.text = std::to_string(v);
+        ui.Repaint();
+    };
+    volume_.onCommit = [this](int v, Ui& ui) { SaveVolume(v, ui); };
+    volumeTest_.label = "Test";
+    volumeTest_.onClick = [this](Ui&) { PlayTest(); };
 
     info_.translate = false;
     info_.font = Font::Small;
@@ -260,7 +281,7 @@ void BrowseView::Apply(const FilterInfo& info, Ui& ui, bool force) {
         ruleList_.SetCount(0);
         return;
     }
-    loaded_ = Load(*source_, info, std::move(game));
+    loaded_ = Load(source_, info, std::move(game));
     if (!loaded_->parsed) {
         empty_ = true;
         message_.text = loaded_->error;
@@ -280,6 +301,10 @@ void BrowseView::Apply(const FilterInfo& info, Ui& ui, bool force) {
 }
 
 void BrowseView::Rebuild() {
+    if (loaded_->session != nullptr && !volume_.Dragging()) {
+        volume_.SetValue(loaded_->session->SoundVolume());
+        volumeValue_.text = std::to_string(volume_.value);
+    }
     // The open parts and the chosen row stay open and chosen when the same filter is read again.
     std::vector<std::string> open;
     for (const SectionRow& row : sections_)
@@ -575,6 +600,44 @@ void BrowseView::OpenRule(int shownIndex, Ui& ui) {
     ui.PushView(std::make_shared<RuleView>(loaded_, shown_[static_cast<std::size_t>(shownIndex)]));
 }
 
+void BrowseView::SaveVolume(int volume, Ui& ui) {
+    if (!loaded_ || loaded_->session == nullptr) return;
+    std::shared_ptr<Loaded> loaded = loaded_;
+    std::shared_ptr<bool> alive = alive_;
+    const int before = loaded->session->SoundVolume();
+    CommitChange(
+        ui, loaded, alive_,
+        [volume](edit::Session& s) {
+            const document::Value v = document::Value::Integer(volume);
+            s.SetSetting("soundVolume", &v);
+        },
+        [this, alive](Ui& u, bool ok, bool, const std::string& error) {
+            if (!*alive) return;
+            volumeError_ = ok ? std::string{} : UiFormat("Volume not saved: {0}", {error});
+            if (ok) PlayTest();
+            u.Repaint();
+        },
+        [this, alive, before](Ui& u) {  // no version of their own: the slider goes back
+            if (!*alive) return;
+            volume_.SetValue(before);
+            volumeValue_.text = std::to_string(before);
+            u.Repaint();
+        });
+}
+
+void BrowseView::PlayTest() {
+    if (!loaded_ || loaded_->session == nullptr) return;
+    const std::vector<std::string> files = loaded_->session->SoundFiles();
+    if (files.empty()) return;
+    std::string file = files.front();
+    for (const char* liked : {"tink.mp3", "tink.wav", "unique.mp3"})
+        if (std::find(files.begin(), files.end(), liked) != files.end()) {
+            file = liked;
+            break;
+        }
+    source_->PlaySound(loaded_->session->SoundPath(file), source_->FileSoundVolume() * volume_.value / 100);
+}
+
 void BrowseView::Layout(const LayoutContext& c) {
     overlay::Measurer& m = c.measure;
     const Box& area = c.content;
@@ -606,8 +669,23 @@ void BrowseView::Layout(const LayoutContext& c) {
 
     // A line about the filter.
     const int infoTop = search_.box.bottom + tight;
-    info_.box = Box{area.left, infoTop, area.right, infoTop + m.S(20)};
-    info_.color = theme.dim;
+    const int infoHeight = std::max(m.S(26), m.LineHeight(Font::Small) + m.S(10));
+    const bool volume = !empty_ && loaded_ && loaded_->session != nullptr && !loaded_->session->SoundFiles().empty();
+    for (Widget* w : std::initializer_list<Widget*>{&volumeLabel_, &volume_, &volumeValue_, &volumeTest_}) w->visible = volume;
+    int infoRight = area.right;
+    if (volume) {
+        const int testWidth = m.TextWidth(UiText(volumeTest_.label), Font::Body) + m.S(24);
+        volumeTest_.box = Box{area.right - testWidth, infoTop, area.right, infoTop + infoHeight};
+        const int valueWidth = m.TextWidth("100", Font::Small) + m.S(8);
+        volumeValue_.box = Box{volumeTest_.box.left - gap - valueWidth, infoTop, volumeTest_.box.left - gap, infoTop + infoHeight};
+        volume_.box = Box{volumeValue_.box.left - m.S(160), infoTop, volumeValue_.box.left - tight, infoTop + infoHeight};
+        const int labelWidth = m.TextWidth(UiText(volumeLabel_.text), Font::Small) + m.S(8);
+        volumeLabel_.box = Box{volume_.box.left - labelWidth, infoTop, volume_.box.left - tight, infoTop + infoHeight};
+        volumeValue_.color = theme.text;
+        infoRight = volumeLabel_.box.left - gap;
+    }
+    info_.box = Box{area.left, infoTop, infoRight, infoTop + infoHeight};
+    info_.color = volumeError_.empty() ? theme.dim : theme.danger;
     if (loaded_ && loaded_->parsed) {
         const document::Settings& s = loaded_->doc.GetSettings();
         std::string text = UiFormat("{0} rules", {std::to_string(loaded_->doc.ActiveCount())});
@@ -616,6 +694,7 @@ void BrowseView::Layout(const LayoutContext& c) {
         if (loaded_->session != nullptr && loaded_->session->IsCopy()) text += "  ·  " + UiText("your version: your changes on top of the author's filter");
         else if (loaded_->info.shipped) text += "  ·  " + UiText("ships with the mod");
         if (loaded_->session == nullptr && !loaded_->sessionError.empty()) text += "  ·  " + UiFormat("read only: {0}", {loaded_->sessionError});
+        if (!volumeError_.empty()) text = volumeError_;
         info_.text = text;
     } else {
         info_.text.clear();
@@ -651,7 +730,8 @@ void BrowseView::Layout(const LayoutContext& c) {
 }
 
 void BrowseView::FocusList(std::vector<Widget*>& out) {
-    out = {&search_, &levelLabel_, &level_, &addRule_, &gameSettings_, &info_, &sectionList_, &count_, &ruleList_, &message_};
+    out = {&search_, &levelLabel_, &level_, &addRule_, &gameSettings_, &info_, &volumeLabel_, &volume_, &volumeValue_, &volumeTest_,
+           &sectionList_, &count_, &ruleList_, &message_};
 }
 
 void BrowseView::Paint(Canvas&) {}
@@ -702,7 +782,7 @@ void BrowseView::PaintRuleRow(Canvas& canvas, int index, const Box& row, const o
     const int badgeWidth = canvas.S(104);
     const int badgeHeight = canvas.LineHeight(Font::Small) + canvas.S(6);
     const Box badge{row.left + pad, row.CentreY() - badgeHeight / 2, row.left + pad + badgeWidth, row.CentreY() - badgeHeight / 2 + badgeHeight};
-    const Rgb color = active ? ActionColor(s.action, theme) : theme.dim;
+    const overlay::Rgb color = active ? ActionColor(s.action, theme) : theme.dim;
     canvas.FillAlpha(badge, color, active ? 64 : 32);
     canvas.Frame(badge, color);
     canvas.Text(isOff ? UiText("Off") : s.actionLabel, badge, active ? theme.text : theme.dim, Font::Small, kCenter | kVCenter | kSingleLine | kNoHighlight);

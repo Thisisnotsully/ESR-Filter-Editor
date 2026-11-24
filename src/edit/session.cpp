@@ -411,4 +411,41 @@ auto UpdateCopies(const Folders& folders) -> std::vector<CopyUpdate> {
     return out;
 }
 
+auto Session::PlayerSetting(const std::string& key) const -> const Value* {
+    for (const document::Member& m : changes_.settings)
+        if (m.key == key) return &m.value;
+    return nullptr;
+}
+
+void Session::SetSetting(const std::string& key, const Value* value) {
+    changes_.settings.erase(std::remove_if(changes_.settings.begin(), changes_.settings.end(), [&](const document::Member& m) { return m.key == key; }),
+                            changes_.settings.end());
+    if (value != nullptr) changes_.settings.push_back(document::Member{key, *value});
+    Rebuild();
+}
+
+auto Session::SoundVolume() const -> int {
+    std::int64_t volume = base_.GetSettings().soundVolume.value_or(100);
+    if (const Value* v = PlayerSetting("soundVolume")) v->AsInteger(volume);
+    return static_cast<int>(std::clamp<std::int64_t>(volume, 0, 100));
+}
+
+auto Session::SoundFiles() const -> std::vector<std::string> {
+    std::vector<std::string> out;
+    std::error_code ec;
+    const fs::path folder = P(basePath_).parent_path() / "sounds";
+    if (!fs::is_directory(folder, ec)) return out;
+    for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec)) {
+        if (!entry.is_regular_file(ec)) continue;
+        std::string name = U(entry.path().filename());
+        std::string lower = name;
+        for (char& c : lower) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+        if (lower.ends_with(".wav") || lower.ends_with(".mp3") || lower.ends_with(".flac")) out.push_back(name);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+auto Session::SoundPath(const std::string& file) const -> std::string { return U(P(basePath_).parent_path() / "sounds" / P(file)); }
+
 }  // namespace esrfe::edit

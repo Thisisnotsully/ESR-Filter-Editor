@@ -253,6 +253,20 @@ int main(int argc, char** argv) {
         const int companion = merged.FindRule("U002");
         CHECK(companion >= 0 && companion < 2 && merged.Rules()[static_cast<std::size_t>(companion)].value.Find("show") != nullptr);
         CHECK(merged.Rules()[static_cast<std::size_t>(merged.ActiveCount() - 1)].value.Find("labelBorder") != nullptr);
+        // The player's hide comes after their shows, even one added before them.
+        CHECK(companion == 0 && merged.FindRule("U001") == 1);
+        {
+            ChangeSet order = own;
+            OwnRule show;
+            show.id = "U003";
+            show.place = "top";
+            show.rule = Value::Object({{"comment", Value::String("U003 | superior caps | show")}, {"itemCodes", Value::Array({Value::String("cap")})},
+                                       {"show", Value::Bool(true)}});
+            order.own.push_back(show);
+            document::Document ordered;
+            CHECK(Read(Merge(author, order).text, ordered));
+            CHECK(ordered.FindRule("U003") == 1 && ordered.FindRule("U001") == 2);
+        }
         // The editor's own view has no copy.
         MergeOptions view;
         view.companions = false;
@@ -324,6 +338,16 @@ int main(int argc, char** argv) {
         CHECK(ReadText((user / "icons" / "gem.sprite").string(), text) && text == "GEM");
         CHECK(ReadText((user / "sounds" / "tink.mp3").string(), text) && text == "SOMEONE ELSE'S");
         CHECK(!fs::exists(user / "selection.json.tmp"));
+
+        // The sounds the author's filter has, and the volume the player sets.
+        CHECK(session.SoundFiles() == (std::vector<std::string>{"gong.mp3", "tink.mp3"}));
+        CHECK(session.SoundPath("gong.mp3") == (repo / "sounds" / "gong.mp3").string());
+        CHECK(session.SoundVolume() == base.GetSettings().soundVolume.value_or(100));
+        Value forty = Value::Integer(40);
+        session.SetSetting("soundVolume", &forty);
+        CHECK(session.SoundVolume() == 40);
+        CHECK(session.Save(error, switched));
+        CHECK(ReadText(session.MergedPath(), text) && Read(text, copy) && copy.GetSettings().soundVolume == 40);
 
         // Opening the copy again: the changes come back, nothing switches.
         Session again;

@@ -12,6 +12,7 @@ add_library(overlay_core STATIC
     form.cpp
     help.cpp
     osk.cpp
+    pickers.cpp
     text_edit.cpp
     text_fold.cpp
     ui_text.cpp

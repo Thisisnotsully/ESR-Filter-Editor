@@ -386,9 +386,13 @@ auto GameData::StatLineUntrimmed(int statId, int value, int param, Language lang
     const std::string& key = value < 0 && !s->descNeg.empty() ? s->descNeg : s->descPos;
     std::string str = Text(key, lang);
     const std::string str2 = s->desc2.empty() ? std::string{} : Text(s->desc2, lang);
-    if (str.empty() && s->descFunc == 0) return {};  // a stat the game never shows
-
     const auto skillName = [&](int id) { return skills.Name(id, strings, lang); };
+    // Two stats itemstatcost.txt gives no text: the game words them itself.
+    if (str.empty() && s->descFunc == 0) {
+        if (s->name == "item_nonclassskill") return Format(Text("ItemModifierNonClassSkill", lang), {Num(value), Str(skillName(param))});
+        if (s->name == "item_aura") return Format(Text("ModitemAura", lang), {Num(value), Str(skillName(param))});
+        return {};  // a stat the game never shows
+    }
     const auto onlyText = [&](int classId) -> std::string {
         const PlayerClass* c = ClassById(classId);
         return c == nullptr ? std::string{} : Text(c->onlyKey, lang);

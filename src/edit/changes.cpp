@@ -159,6 +159,7 @@ auto Parse(std::string_view text, ChangeSet& out, std::string& error) -> bool {
             out.rules.push_back(std::move(change));
         }
     }
+    if (const Value* settings = root.Find("settings"); settings != nullptr && settings->IsObject()) out.settings = settings->object;
     if (const Value* own = root.Find("own"); own != nullptr && own->IsArray()) {
         for (const Value& o : own->array) {
             OwnRule rule;
@@ -184,6 +185,11 @@ auto Render(const ChangeSet& c) -> std::string {
     out += "  \"merged\": " + EncodeString(c.merged) + ",\n";
     out += "  \"baseVersion\": " + EncodeString(c.baseVersion) + ",\n";
     out += "  \"baseHash\": " + EncodeString(HexHash(c.baseHash)) + ",\n";
+    if (!c.settings.empty()) {
+        Value settings = Value::Object();
+        settings.object = c.settings;
+        out += "  \"settings\": " + document::Render(settings) + ",\n";
+    }
     out += "  \"rules\": [";
     for (std::size_t i = 0; i < c.rules.size(); ++i) {
         const RuleChange& r = c.rules[i];
@@ -390,20 +396,31 @@ auto Merge(std::string_view authorText, const ChangeSet& changes, const MergeOpt
     };
     const char* topAbout = "Your own rules. They come first, so what they hide is hidden and what they show is never hidden.";
     const char* endAbout = "Your own highlights. They come last, so their colours, beam and name are the ones you see.";
+    // First the player's shows in My Rules (with the show-only copies of their highlights), then everything else: a
+    // hide of theirs never comes before a show of theirs, so what they asked to see stays seen.
+    const auto isHide = [](const OwnRule& own) {
+        const Value* hide = own.rule.Find("hide");
+        return hide != nullptr && !(hide->IsBool() && !hide->boolean);
+    };
     for (const OwnRule& own : changes.own) {
         if (own.off && !options.keepOff) continue;
+        const bool show = own.place == "top" && !isHide(own);
+        const bool companion = own.place == "end" && own.keepShown && options.companions;
+        if (!show && !companion) continue;
+        const int first = part(options.ownPart, true, topAbout);
+        if (first < 0) return result;
+        const document::Status status = doc.InsertRule(document::Position::EndOf(first), show ? own.rule : ShownCompanion(own));
+        if (!status) return fail("rule " + own.id, status);
+    }
+    for (const OwnRule& own : changes.own) {
+        if (own.off && !options.keepOff) continue;
+        if (own.place == "top" && !isHide(own)) continue;  // placed above
         document::Position where = document::Position::End();
         if (own.place == "top" || own.place == "end") {
             const bool top = own.place == "top";
             const int heading = part(top ? options.ownPart : options.highlightPart, top, top ? topAbout : endAbout);
             if (heading < 0) return result;
             where = document::Position::EndOf(heading);
-            if (!top && own.keepShown && options.companions) {
-                const int first = part(options.ownPart, true, topAbout);
-                if (first < 0) return result;
-                const document::Status status = doc.InsertRule(document::Position::EndOf(first), ShownCompanion(own));
-                if (!status) return fail("rule " + own.id, status);
-            }
         } else {
             bool placed = false;
             if (!own.after.empty()) {
@@ -441,6 +458,11 @@ auto Merge(std::string_view authorText, const ChangeSet& changes, const MergeOpt
         if (index < 0) continue;
         const document::Status status = doc.DeleteRule(index);
         if (!status) return fail("rule " + id, status);
+    }
+
+    // The player's settings.
+    for (const document::Member& m : changes.settings) {
+        if (const document::Status status = doc.SetSetting(m.key, m.value); !status) return fail("the setting " + m.key, status);
     }
 
     // The copy's own name; no update address (the launcher keeps the author's filter up to date, not this copy).

@@ -66,6 +66,9 @@ public:
     edit::Folders folders;
     auto Folders() -> edit::Folders override { return folders; }
     void OpenGameSettings() override { ++settingsOpened; }
+    std::vector<std::pair<std::string, int>> played;
+    void PlaySound(const std::string& path, int volume) override { played.emplace_back(path, volume); }
+    auto FileSoundVolume() -> int override { return 80; }
     // The filter on disk, where the loot filter would have it.
     void Put(const std::string& content) {
         text = content;
@@ -131,73 +134,131 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
     const int tab = game.stats.Id("item_addskill_tab");
     CHECK(allSkills >= 0 && tab >= 0);
     // A superior Mystic Staff with +1 to All Skills (superior) and +2 to a skill tab (its automagic).
-    RuleDraft d = FromItem("1ls", 3, {{allSkills, 0, 1}, {tab, 10, 2}}, game);
+    RuleDraft d = FromItem("1ls", 3, -1, {{allSkills, 0, 1}, {tab, 10, 2}}, game);
+    CHECK(d.kind == ItemKind::Base);
     CHECK(d.bases == std::vector<std::string>{"1ls"});
     CHECK(d.tiers.size() == 1 && *d.tiers.begin() == gamedata::Tier::Elite);
-    CHECK(d.rarities == std::set<int>{3});
+    CHECK(d.baseQualities == std::set<int>{3});
     CHECK(d.stats.size() == 1 && d.stats[0].stat == allSkills && d.stats[0].atLeast == 1);  // the tab is not a superior bonus
     DraftOffer offer = Offer(d, game);
-    CHECK(offer.statsPossible && offer.stats.size() > 10);
-    CHECK(offer.rarities.count(3) && offer.rarities.count(4) && offer.rarities.count(7));
-    bool skillLevel = false;
+    CHECK(offer.statsPossible && offer.stats.size() > 10 && offer.qualities);
     for (const StatOption& o : offer.stats) {
         const gamedata::Stat* s = game.stats.At(o.stat);
-        skillLevel = skillLevel || (s != nullptr && s->param == gamedata::ParamKind::SkillLevel);
+        CHECK(s != nullptr && s->param != gamedata::ParamKind::SkillLevel);
         CHECK(o.min >= 1 && o.max >= o.min && !o.label.empty());
+        CHECK(o.label.find("item_") == std::string::npos);  // no internal names
     }
-    CHECK(!skillLevel);
-    // Superior and magic together: no stats.
+    // White and superior together: no bonuses.
     RuleDraft both = d;
-    both.rarities = {3, 4};
+    both.baseQualities.clear();
     CHECK(!Offer(both, game).statsPossible);
     Tidy(both, game);
     CHECK(both.stats.empty());
-    // Magic: the magic affixes, many more.
-    RuleDraft magic = d;
-    magic.rarities = {4};
-    magic.stats.clear();
-    CHECK(Offer(magic, game).stats.size() > Offer(d, game).stats.size());
-    // A ring has no superior version.
-    RuleDraft ring = FromItem("rin", 6, {}, game);
-    CHECK(!Offer(ring, game).rarities.count(3) && !Offer(ring, game).tiers);
+    // Magic: the magic affixes, worded like the tooltip ("+4 to Teleport", one per skill).
+    RuleDraft magic = FromItem("m50", 4, -1, {}, game);
+    CHECK(magic.kind == ItemKind::Magic);
+    const DraftOffer magicOffer = Offer(magic, game);
+    CHECK(magicOffer.statsPossible && magicOffer.stats.size() > Offer(d, game).stats.size());
+    int skills = 0;
+    std::set<std::string> labels;
+    for (const StatOption& o : magicOffer.stats) {
+        CHECK(o.label.find("item_") == std::string::npos);
+        skills += o.label.find("Teleport") != std::string::npos ? 1 : 0;
+        CHECK(labels.insert(o.label).second);  // no two alike
+    }
+    CHECK(skills >= 1);
+    // Rare: no bonuses.
+    RuleDraft rare = FromItem("rin", 6, -1, {}, game);
+    CHECK(rare.kind == ItemKind::Rare && !Offer(rare, game).statsPossible);
+    // A unique, a set item, a coupon, a rune.
+    const gamedata::Unique* someUnique = nullptr;
+    for (const gamedata::Unique& u : game.uniques.All())
+        if (!u.disabled && someUnique == nullptr) someUnique = &u;
+    CHECK(someUnique != nullptr);
+    RuleDraft unique = FromItem(someUnique->code, 7, someUnique->row, {}, game);
+    CHECK(unique.kind == ItemKind::Unique && unique.uniques == std::vector<int>{someUnique->row} && unique.bases.empty());
+    const gamedata::SetItem& someSet = game.sets.Items().front();
+    RuleDraft set = FromItem(someSet.code, 5, someSet.row, {}, game);
+    CHECK(set.kind == ItemKind::Set && set.setItems == std::vector<int>{someSet.row});
+    CHECK(Coupons(game).size() > 300);
+    int tiered = 0;
+    for (const Coupon& c : Coupons(game)) tiered += c.tier != gamedata::Tier::None ? 1 : 0;
+    CHECK(tiered > 300);  // the base in the name gives the tier
+    RuleDraft coupon = FromItem("01c", 2, -1, {}, game);
+    CHECK(coupon.kind == ItemKind::Unique && coupon.coupons == std::vector<std::string>{"01c"});
+    RuleDraft rune = FromItem("r30", 2, -1, {}, game);
+    CHECK(rune.kind == ItemKind::Other && rune.bases == std::vector<std::string>{"r30"});
+    CHECK(!KindAllows(ItemKind::Other, game, *game.bases.Find("01c")));
+    CHECK(KindAllows(ItemKind::Magic, game, *game.bases.Find("rin")) && !KindAllows(ItemKind::Base, game, *game.bases.Find("rin")));
 
-    // To a rule and back.
-    d.action = DraftAction::Highlight;
-    d.color = 1;
-    d.beam = true;
-    edit::OwnRule own = ToRule(d, game, "Superior Mystic Staff with +1 to All Skills");
+    // To rules and back. A shown rule with a look: its colours last, never hidden.
+    d.action = DraftAction::Show;
+    d.levels = {3, 4};
+    d.look.border = Rgb{230, 50, 50};
+    d.look.background = Rgb{0, 0, 0};
+    d.look.nameColor = 3;
+    d.look.beam = true;
+    d.look.beamColor = Rgb{70, 130, 255};
+    d.look.sound = "gong.mp3";
+    d.look.chat = true;
+    d.look.chatText = "Look: {name}";
+    d.look.chatColor = 4;
+    std::vector<edit::OwnRule> rules = ToRules(d, game, "Superior Mystic Staff with +1 to All Skills");
+    CHECK(rules.size() == 1);
+    edit::OwnRule own = rules.front();
     CHECK(own.place == "end" && own.keepShown);
-    CHECK(own.rule.Find("labelBorder") != nullptr && own.rule.Find("droplight") != nullptr);
-    CHECK(own.rule.Find("quality") != nullptr && own.rule.Find("quality")->Str() == "superior");
-    CHECK(own.rule.Find("isIdentified") != nullptr && own.rule.Find("baseTier") == nullptr);  // only elite was possible
+    CHECK(own.rule.Find("labelBorder") != nullptr && own.rule.Find("labelBackground") != nullptr && own.rule.Find("droplight") != nullptr);
+    CHECK(own.rule.Find("namePrefix") != nullptr && own.rule.Find("sound")->Str() == "gong.mp3");
+    CHECK(own.rule.Find("chatMessage")->Str() == std::string("\xC3\xBF" "c4Look: {name}"));
+    CHECK(own.rule.Find("quality")->Str() == "superior" && own.rule.Find("isIdentified") != nullptr);
+    CHECK(own.rule.Find("activeInLevels")->array.size() == 2);
     RuleDraft back;
     CHECK(FromRule(own.rule, game, back));
-    CHECK(back.action == DraftAction::Highlight && back.color == 1 && back.beam && back.stats.size() == 1);
-    CHECK(ToRule(back, game, "Superior Mystic Staff with +1 to All Skills").rule == own.rule);
-    // Hide: on top.
-    RuleDraft hide = FromItem("cap", 2, {}, game);
+    CHECK(back.action == DraftAction::Show && back.kind == ItemKind::Base && back.look == d.look && back.stats.size() == 1);
+    CHECK(ToRules(back, game, "Superior Mystic Staff with +1 to All Skills").front().rule == own.rule);
+    // Always Show: no levels, and without a look a single show rule on top.
+    RuleDraft always = unique;
+    always.action = DraftAction::AlwaysShow;
+    always.levels = {3};
+    Tidy(always, game);
+    CHECK(always.levels.empty());
+    rules = ToRules(always, game, "A unique");
+    CHECK(rules.size() == 1 && rules[0].place == "top" && rules[0].rule.Find("show") != nullptr && rules[0].rule.Find("activeInLevels") == nullptr);
+    CHECK(rules[0].rule.Find("uniqueOrSetIds") != nullptr && rules[0].rule.Find("quality")->Str() == "unique");
+    // Uniques and coupons together: two rules.
+    always.coupons = {"01c"};
+    rules = ToRules(always, game, "A unique");
+    CHECK(rules.size() == 2 && rules[1].rule.Find("itemCodes") != nullptr && rules[1].rule.Find("uniqueOrSetIds") == nullptr);
+    // Hide: on top, its look dropped.
+    RuleDraft hide = FromItem("cap", 2, -1, {}, game);
     hide.action = DraftAction::Hide;
     hide.levels = {3, 4};
-    edit::OwnRule hideRule = ToRule(hide, game, "Normal caps");
-    CHECK(hideRule.place == "top" && hideRule.rule.Find("hide") != nullptr && hideRule.rule.Find("activeInLevels")->array.size() == 2);
-    // Mythicals: a weapons pick with Mythicals left out.
+    hide.look.border = Rgb{1, 2, 3};
+    Tidy(hide, game);
+    CHECK(!hide.look.Any());
+    edit::OwnRule hideRule = ToRules(hide, game, "Normal caps").front();
+    CHECK(hideRule.place == "top" && hideRule.rule.Find("hide") != nullptr && hideRule.rule.Find("quality")->Str() == "normal");
+    // Set items.
+    set.action = DraftAction::AlwaysShow;
+    edit::OwnRule setRule = ToRules(set, game, "A set item").front();
+    CHECK(setRule.rule.Find("quality")->Str() == "set");
+    RuleDraft setBack;
+    CHECK(FromRule(setRule.rule, game, setBack) && setBack.kind == ItemKind::Set && setBack.setItems == set.setItems);
+    // Mythicals: magic weapons with Mythicals left out.
     RuleDraft axes;
     axes.action = DraftAction::Show;
+    axes.kind = ItemKind::Magic;
     axes.bases = {"axe", "m01", "7wd"};
-    axes.mythical = MythicalMode::Leave;
+    axes.mythical = RuleDraft::Mythicals::Leave;
     CHECK(Offer(axes, game).mythicals);
     CHECK(ChosenBases(axes, game) == (std::vector<std::string>{"axe", "7wd"}));  // 7wd is not a Mythical
-    edit::OwnRule axesRule = ToRule(axes, game, "Axes");
+    edit::OwnRule axesRule = ToRules(axes, game, "Axes").front();
     CHECK(axesRule.rule.Find("excludeItemCodes") != nullptr && axesRule.rule.Find("excludeItemCodes")->array.size() == 1);
-    axes.mythical = MythicalMode::Only;
-    CHECK(ChosenBases(axes, game) == std::vector<std::string>{"m01"});
-    CHECK(ToRule(axes, game, "Mythical axes").rule.Find("itemCodes")->array.size() == 1);
     CHECK(!Complete(RuleDraft{}) && Complete(axes));
 
     // The loot filter's own reader must take them: written for tools/filtercheck (tests/ui/draft-rules.txt).
     if (outPath != nullptr) {
         edit::ChangeSet changes;
-        // As the session does: the id in front of the title.
         const auto add = [&changes](edit::OwnRule r, const char* id) {
             r.id = id;
             r.rule.Set("comment", document::Value::String(std::string(id) + " | " + r.rule.Find("comment")->Str()));
@@ -206,6 +267,7 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
         add(own, "U001");
         add(hideRule, "U002");
         add(axesRule, "U003");
+        add(setRule, "U004");
         std::FILE* f = std::fopen(outPath, "wb");
         if (f != nullptr) {
             const std::string text = Render(changes);
@@ -490,6 +552,8 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
 
     // ---- the add-rule steps ----
     {
+        std::filesystem::create_directories(user / "QoL-Filter" / "sounds");
+        edit::WriteText((user / "QoL-Filter" / "sounds" / "gong.mp3").string(), "GONG");
         h.source->info.textHash += 1;  // read the player's copy afresh
         h.Show();
         data = h.view->Data();
@@ -516,50 +580,98 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                 f.Mouse(up);
                 layout();
             };
+            using Step = AddRuleView::Step;
             layout();
-            CHECK(!steps->Finish().enabled);
-            click(steps->HighlightChip());
-            CHECK(steps->Draft().action == DraftAction::Highlight);
-            click(steps->ColorChip(2));
-            CHECK(steps->Draft().color == 2);
-            click(steps->StepChip(AddRuleView::Step::Items));
-            CHECK(steps->CurrentStep() == AddRuleView::Step::Items);
-            // Search for the staff, tick it.
+            CHECK(!steps->Finish().enabled && !steps->StepUsed(Step::Items));
+            click(steps->ActionChip(DraftAction::Show));
+            CHECK(steps->Draft().action == DraftAction::Show && steps->StepUsed(Step::Look) && steps->StepUsed(Step::Levels));
+            // The crash: magic with a bonus ticked, then another kind.
+            steps->GoTo(Step::Kind);
+            layout();
+            click(steps->KindChip(1));  // Magic items
+            CHECK(steps->Draft().kind == ItemKind::Magic && steps->CurrentStep() == Step::Items);
+            f.Focus(&steps->ItemSearch());
+            for (char16_t ch : esrfe::overlay::Utf8ToUtf16("mystic staff")) f.Char(ch);
+            layout();
+            for (int i = 0; i < static_cast<int>(steps->Entries().size()); ++i)
+                if (steps->Entries()[static_cast<std::size_t>(i)].code == "1ls") steps->ToggleEntry(i, f);
+            steps->GoTo(Step::Bonuses);
+            layout();
+            CHECK(steps->Offered().statsPossible && !steps->StatRows().empty());
+            steps->ToggleStat(0, f);
+            CHECK(steps->Draft().stats.size() == 1);
+            f.Paint(h.platform.canvas);
+            steps->GoTo(Step::Kind);
+            layout();
+            click(steps->KindChip(3));  // Unique items: no crash, nothing of the magic pick left
+            CHECK(steps->Draft().kind == ItemKind::Unique && steps->Draft().bases.empty() && steps->Draft().stats.empty());
+            bool elite = false, coupons = false;
+            for (const AddRuleView::Category& c : steps->Categories()) {
+                elite = elite || c.name == "Elite tier";
+                coupons = coupons || c.name == "Ancient Coupons: Normal";
+            }
+            CHECK(elite && coupons);
+            CHECK(!steps->StepUsed(Step::Tier) && !steps->StepUsed(Step::Bonuses));
+            f.Paint(h.platform.canvas);
+            // White and superior bases: the staff, superior only, a bonus.
+            steps->GoTo(Step::Kind);
+            layout();
+            click(steps->KindChip(0));
             f.Focus(&steps->ItemSearch());
             for (char16_t ch : esrfe::overlay::Utf8ToUtf16("mystic staff")) f.Char(ch);
             layout();
             int staff = -1;
-            for (int i = 0; i < static_cast<int>(steps->BaseRows().size()); ++i)
-                if (steps->BaseRows()[static_cast<std::size_t>(i)] == "1ls") staff = i;
+            for (int i = 0; i < static_cast<int>(steps->Entries().size()); ++i)
+                if (steps->Entries()[static_cast<std::size_t>(i)].code == "1ls") staff = i;
             CHECK(staff >= 0);
-            steps->ToggleBase(staff, f);
+            steps->ToggleEntry(staff, f);
             CHECK(steps->Draft().bases == std::vector<std::string>{"1ls"});
             CHECK(steps->Finish().enabled);
-            // Rarity: superior only.
-            steps->GoTo(AddRuleView::Step::Rarity);
+            steps->GoTo(Step::Tier);
             layout();
-            click(steps->RarityBox(1));  // Superior
-            CHECK(steps->Draft().rarities == std::set<int>{3});
-            // Stats: +All Skills.
-            steps->GoTo(AddRuleView::Step::Stats);
+            CHECK(steps->WhiteBox().visible && steps->WhiteBox().on && steps->SuperiorBox().on);
+            click(steps->WhiteBox());
+            CHECK(steps->Draft().baseQualities == std::set<int>{3});
+            steps->GoTo(Step::Bonuses);
             layout();
-            CHECK(steps->Offered().statsPossible && !steps->StatRows().empty());
             int allSkills = -1;
             for (int i = 0; i < static_cast<int>(steps->StatRows().size()); ++i)
                 if (steps->Offered().stats[static_cast<std::size_t>(steps->StatRows()[static_cast<std::size_t>(i)])].label.find("All Skills") != std::string::npos)
                     allSkills = i;
             CHECK(allSkills >= 0);
             steps->ToggleStat(allSkills, f);
-            CHECK(steps->Draft().stats.size() == 1);
-            CHECK(steps->Summary().find("Highlight") != std::string::npos && steps->Summary().find("All Skills") != std::string::npos);
-            steps->GoTo(AddRuleView::Step::Check);
+            // The look: a red border, a blue beam from the picker, a sound (heard at 80 x the filter's volume), a chat line.
+            steps->GoTo(Step::Look);
+            layout();
+            click(steps->BorderSwatch(1));
+            CHECK(steps->Draft().look.border == Swatches()[1].rgb);
+            click(steps->PickFor(2));
+            steps->Picker().SetColor(esrfe::overlay::Rgb{0, 0, 255});
+            steps->Picker().onChange(esrfe::overlay::Rgb{0, 0, 255}, f);
+            CHECK(steps->Draft().look.beam && (steps->Draft().look.beamColor == Rgb{0, 0, 255}));
+            CHECK(steps->Sound().options.size() == 2);
+            h.source->played.clear();
+            steps->Sound().onChange(1, f);
+            CHECK(steps->Draft().look.sound == "gong.mp3");
+            CHECK(h.source->played.size() == 1 && h.source->played[0].second == 80 * data->session->SoundVolume() / 100);
+            click(steps->Chat());
+            f.Focus(&steps->ChatText());
+            for (char16_t ch : esrfe::overlay::Utf8ToUtf16("Found {name}")) f.Char(ch);
+            layout();
+            CHECK(steps->Draft().look.chat && steps->Draft().look.chatText == "Found {name}");
+            CHECK(steps->PreviewName() == "Mystic Staff");
+            h.platform.canvas.drawn.clear();
+            f.Paint(h.platform.canvas);
+            bool drewName = false;
+            for (const std::string& t : h.platform.canvas.drawn) drewName = drewName || t == "Found Mystic Staff";
+            CHECK(drewName);
+            steps->GoTo(Step::Check);
             layout();
             f.Paint(h.platform.canvas);
             const int pops = h.platform.pops;
             click(steps->Finish());
             CHECK(!f.DialogOpen());  // the copy exists: no question
             CHECK(h.platform.pops == pops + 1);
-            CHECK(steps->Status().empty());
         }
         // Saved: the changes and the game's copy.
         {
@@ -568,13 +680,15 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             edit::ChangeSet changes;
             CHECK(edit::Parse(saved, changes, error));
             CHECK(changes.own.size() == 1 && changes.own[0].id == "U001" && changes.own[0].place == "end" && changes.own[0].keepShown);
-            CHECK(changes.own[0].rule.Find("comment")->Str().rfind("U001 | Mystic Staff", 0) == 0);
+            CHECK(changes.own.size() == 1 && changes.own[0].rule.Find("sound") != nullptr && changes.own[0].rule.Find("chatMessage") != nullptr);
+            CHECK(changes.own.size() == 1 && changes.own[0].rule.Find("comment")->Str().rfind("U001 | Mystic Staff", 0) == 0);
             std::string copyText;
             CHECK(edit::ReadText((user / "Sullys-QoL-Filter (my version).json").string(), copyText));
             document::Document copy;
             std::vector<document::Diag> diags;
             CHECK(document::Document::Parse(copyText, copy, diags));
             CHECK(copy.FindHeading("My Highlights") >= 0 && copy.FindHeading("My Rules") == 0);
+            CHECK(std::filesystem::exists(user / "sounds" / "gong.mp3"));  // the sound came with the copy
         }
         // The list shows it, marked as yours; its card can change it.
         h.source->info.textHash += 1;
@@ -604,17 +718,19 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             auto again = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
             CHECK(again != nullptr);
             if (again != nullptr) {
-                CHECK(again->Draft().action == DraftAction::Highlight && again->Draft().color == 2 && again->Draft().stats.size() == 1);
+                // Shown on every level: the same as Always Show.
+                CHECK(again->Draft().action == DraftAction::AlwaysShow && again->Draft().kind == ItemKind::Base && again->Draft().stats.size() == 1);
+                CHECK(again->Draft().look.sound == "gong.mp3" && again->Draft().look.chatText == "Found {name}");
                 esrfe::overlay::Form af{h.platform, again};
                 af.Layout(h.client, h.content);
-                again->ColorChip(0).onClick(af);
+                again->BorderSwatch(0).onClick(af);
                 again->Finish().onClick(af);
                 std::string saved, error;
                 edit::ChangeSet changes;
                 CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved) && edit::Parse(saved, changes, error));
                 CHECK(changes.own.size() == 1 && changes.own[0].id == "U001");  // the same rule, changed
                 RuleDraft d;
-                CHECK(changes.own.size() == 1 && FromRule(changes.own[0].rule, *data->game, d) && d.color == 0);
+                CHECK(changes.own.size() == 1 && FromRule(changes.own[0].rule, *data->game, d) && d.look.border == Swatches()[0].rgb);
             }
             // Off, then delete.
             card->OnSwitch().onChange(false, cf);
@@ -634,10 +750,59 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         }
         // The hover key: the item's rule, waiting for the filter when needed.
         h.platform.pushed.clear();
-        h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("xhl", 3, {{g.stats.Id("extra_curse"), 0, 1}}, g); });
+        h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("xhl", 3, -1, {{g.stats.Id("extra_curse"), 0, 1}}, g); });
         auto fromHover = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
         CHECK(fromHover != nullptr && fromHover->Draft().bases == std::vector<std::string>{"xhl"} && fromHover->Draft().stats.size() == 1);
         CHECK(fromHover != nullptr && fromHover->CurrentStep() == AddRuleView::Step::Action && !fromHover->Finish().enabled);
+    }
+
+    // ---- the filter's volume: saved in the player's version, heard at the loot filter's volume ----
+    {
+        h.source->info.textHash += 1;
+        h.Show();
+        data = h.view->Data();
+        CHECK(data != nullptr && data->session != nullptr);
+        h.Paint();
+        esrfe::overlay::Slider& volume = h.view->Volume();
+        CHECK(volume.visible && volume.value == data->session->SoundVolume());
+        h.source->played.clear();
+        // A drag: nothing saved until the mouse lets go.
+        esrfe::overlay::MouseEvent down;
+        down.kind = esrfe::overlay::MouseKind::Down;
+        down.x = volume.Track().left + volume.Track().Width() / 4;
+        down.y = volume.box.CentreY();
+        h.form.Mouse(down);
+        esrfe::overlay::MouseEvent move = down;
+        move.kind = esrfe::overlay::MouseKind::Move;
+        move.x = volume.Track().left + volume.Track().Width() / 2;
+        h.form.Mouse(move);
+        CHECK(volume.value == 50 && data->session->SoundVolume() != 50 && h.source->played.empty());
+        esrfe::overlay::MouseEvent up = move;
+        up.kind = esrfe::overlay::MouseKind::Up;
+        h.form.Mouse(up);
+        CHECK(data->session->SoundVolume() == 50);
+        CHECK(h.source->played.size() == 1 && h.source->played[0].second == 40);  // 80 x 50%
+        std::string saved, error;
+        edit::ChangeSet changes;
+        CHECK(edit::ReadText((user / "esr-filter-editor" / "Sullys-QoL-Filter.changes.json").string(), saved) && edit::Parse(saved, changes, error));
+        bool has = false;
+        for (const document::Member& m : changes.settings) {
+            std::int64_t v = 0;
+            has = has || (m.key == "soundVolume" && m.value.AsInteger(v) && v == 50);
+        }
+        CHECK(has);
+        std::string copyText;
+        CHECK(edit::ReadText((user / "Sullys-QoL-Filter (my version).json").string(), copyText));
+        CHECK(copyText.find("\"soundVolume\": 50") != std::string::npos);
+        // The keyboard: one step, saved at once.
+        h.form.Focus(&volume);
+        esrfe::overlay::KeyEvent right;
+        right.key = esrfe::overlay::Key::Right;
+        h.form.KeyDown(right);
+        CHECK(volume.value == 55 && data->session->SoundVolume() == 55);
+        h.source->played.clear();
+        h.Click(h.view->VolumeTest());
+        CHECK(h.source->played.size() == 1 && h.source->played[0].second == 44);
     }
 
     // ---- Sully updates a rule the player changed: the editor asks ----

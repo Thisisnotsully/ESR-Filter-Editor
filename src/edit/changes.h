@@ -73,6 +73,7 @@ struct ChangeSet {
     std::uint64_t baseHash = 0;  // Hash of the author's file at the last merge
     std::vector<RuleChange> rules;
     std::vector<OwnRule> own;
+    std::vector<document::Member> settings;  // the player's top-level settings (soundVolume), over the author's
 
     [[nodiscard]] auto Find(std::string_view id) const -> const RuleChange*;
     auto Find(std::string_view id) -> RuleChange*;

@@ -39,8 +39,10 @@
 #include "game_thread.hpp"
 #include "input_block.hpp"
 #include "ui_text.hpp"
+#include "sound_player.h"
 
 #include <algorithm>
+#include <cctype>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -349,7 +351,7 @@ auto PrintItem(const Bridge::HoveredItem& item, bool chat) -> std::vector<esrfe:
 }
 
 // The editor, on a new rule for the item: its base, tier and rarity chosen, its stats ticked (defined with the window).
-void OpenRuleForItem(const std::string& code, int quality, std::vector<esrfe::ui::ItemStat> stats);
+void OpenRuleForItem(const std::string& code, int quality, int uniqueOrSetId, std::vector<esrfe::ui::ItemStat> stats);
 
 auto __cdecl OnEditItem(const D2RL::PluginContext*, const D2RL::Input::ActionEvent* event, void*) noexcept -> D2RL::Input::ActionResult {
     if (!D2RL::Input::HasActionEventField(event, D2RL::Input::ActionEventRequiredSize)
@@ -369,7 +371,7 @@ auto __cdecl OnEditItem(const D2RL::PluginContext*, const D2RL::Input::ActionEve
             return D2RL::Input::ActionResult::Handled;
         }
         std::vector<esrfe::ui::ItemStat> stats = PrintItem(item, HoverChat.load());
-        OpenRuleForItem(Text(item.code), static_cast<int>(item.quality), std::move(stats));
+        OpenRuleForItem(Text(item.code), static_cast<int>(item.quality), item.uniqueOrSetId, std::move(stats));
     } catch (...) {
     }
     return D2RL::Input::ActionResult::Handled;
@@ -566,17 +568,45 @@ void LoadGameData() noexcept {
     }
 }
 
-void OpenRuleForItem(const std::string& code, int quality, std::vector<esrfe::ui::ItemStat> stats) {
+void OpenRuleForItem(const std::string& code, int quality, int uniqueOrSetId, std::vector<esrfe::ui::ItemStat> stats) {
     if (!Window) {
         LogWarn("Loot Filter Editor: the window is unavailable (see the lines above); the edit-item key does nothing.");
         return;
     }
     Window->Open();
-    Window->PostToUi([code, quality, stats = std::move(stats)](ov::Ui& ui) {
+    Window->PostToUi([code, quality, uniqueOrSetId, stats = std::move(stats)](ov::Ui& ui) {
         if (auto view = Browse.lock()) {
-            view->StartRule(ui, [code, quality, stats](const gamedata::GameData& game) { return esrfe::ui::FromItem(code, quality, stats, game); });
+            view->StartRule(ui, [code, quality, uniqueOrSetId, stats](const gamedata::GameData& game) {
+                return esrfe::ui::FromItem(code, quality, uniqueOrSetId, stats, game);
+            });
         }
     });
+}
+
+// The loot filter's volume for sound files (file_sound_volume in d2rloader\config\celestialrayone.loot-filter.toml):
+// it plays a rule's sound at this times the rule's volume. 80 when the file or the line is missing.
+auto LootFilterFileVolume() -> int {
+    std::ifstream file(PluginDir.parent_path() / "config" / "celestialrayone.loot-filter.toml");
+    std::string line;
+    while (std::getline(file, line)) {
+        const std::size_t hash = line.find('#');
+        if (hash != std::string::npos) line.erase(hash);
+        const std::size_t equals = line.find('=');
+        if (equals == std::string::npos) continue;
+        std::string key = line.substr(0, equals);
+        key.erase(std::remove_if(key.begin(), key.end(), [](unsigned char c) { return std::isspace(c) != 0; }), key.end());
+        if (key != "file_sound_volume") continue;
+        try {
+            std::size_t used = 0;
+            std::string value = line.substr(equals + 1);
+            const int number = std::stoi(value, &used);
+            value.erase(0, used);
+            if (value.find_first_not_of(" \t\r") == std::string::npos && number >= 0 && number <= 100) return number;
+        } catch (...) {
+        }
+        return 80;
+    }
+    return 80;
 }
 
 class PluginSource final : public esrfe::ui::Source {
@@ -624,6 +654,11 @@ public:
 
     auto Folders() -> esrfe::edit::Folders override { return EditorFolders(); }
 
+    void PlaySound(const std::string& path, int volume) override {
+        esrfe::sound::Play(std::filesystem::path(std::u8string(path.begin(), path.end())).wstring(), volume);
+    }
+    auto FileSoundVolume() -> int override { return LootFilterFileVolume(); }
+
     void OpenGameSettings() override {
         if (Window) Window->Close();
         if (ThreadsSvc == nullptr || ThreadsSvc->runOnUiThread(Context, &DoOpenNativeLootFilter, nullptr) != D2RL::Threads::Result::Success)
@@ -658,6 +693,7 @@ void StartWindow() {
         return;
     }
     ov::DebugSink() = [](const std::string& line) { LogInfo("Loot Filter Editor: " + line); };
+    esrfe::sound::SetLog([](const std::string& line) { LogWarn(line); });
     Locale = ov::ReadLoaderLocale(GameFolder(), PluginDir);
     ov::LoadUiStrings(ov::UiStringsPath(DataDir, Locale));
     ov::OverlayConfig config;
@@ -911,7 +947,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.5.0",
+    .version     = "0.6.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,
@@ -969,6 +1005,7 @@ D2RL_PLUGIN_EXPORT auto D2RLoaderLoadPlugin(const D2RL::PluginContext* context) 
 
 D2RL_PLUGIN_EXPORT void D2RLoaderUnloadPlugin() noexcept {
     StopWindow();
+    esrfe::sound::Stop();
     if (EventsSvc != nullptr && UiListener != D2RL::SharedEvents::ListenerHandle{}) {
         (void)EventsSvc->unregisterUiMessageListener(Context, UiListener);
     }

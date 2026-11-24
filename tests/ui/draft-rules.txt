@@ -1,9 +1,17 @@
-# The loot filter engine on rules the add-rule steps wrote (ui_test writes them when ESRFE_DRAFT_OUT is set):
-#   U001 highlight: superior Mystic Staff with +1 to All Skills; U002 hide normal caps on levels 3-4; U003 show axes, Mythicals left out
+# The loot filter engine on rules the add-rule steps wrote. ui_test writes their changes file when ESRFE_DRAFT_OUT
+# is set; merge it into the filter, then run tools/filtercheck's check with this file as the scenarios:
+#   U001 Show with a look on levels 3-4: superior Mystic Staff with +1 to All Skills (its show-only copy first)
+#   U002 Hide normal caps on levels 3-4
+#   U003 Show magic axes, Mythicals left out (7wd is not a Mythical)
+#   U004 Always Show a set item (read only: the checker has no set ids)
 Superior Mystic Staff +1 all skills (L4)      | 1ls | 3 | 2 | 4 | item_allskills=1 | shown match:U001
+Superior Mystic Staff +1 all skills (L2)      | 1ls | 3 | 2 | 2 | item_allskills=1 | nomatch:U001
 Superior Mystic Staff, nothing (L4)           | 1ls | 3 | 2 | 4 | - | nomatch:U001
 Superior Mystic Staff +1, unidentified        | 1ls | 3 | 2 | 4 | item_allskills=1,unid=1 | nomatch:U001
 Normal cap (L3)                               | cap | 2 | 0 | 3 | - | hidden match:U002
 Normal cap (L2: not on that level)            | cap | 2 | 0 | 2 | - | nomatch:U002
-Normal axe (L4)                               | axe | 2 | 0 | 4 | - | shown match:U003
-Normal Mythical axe m01 (left out)            | m01 | 2 | 2 | 4 | - | nomatch:U003
+Superior cap (not normal)                     | cap | 3 | 0 | 3 | - | nomatch:U002
+Magic axe (L4)                                | axe | 4 | 0 | 4 | - | shown match:U003
+Magic 7wd (L4, not a Mythical)                | 7wd | 4 | 2 | 4 | - | shown match:U003
+Magic Mythical axe m01 (left out)             | m01 | 4 | 2 | 4 | - | nomatch:U003
+Normal axe (not magic)                        | axe | 2 | 0 | 4 | - | nomatch:U003
