@@ -18,30 +18,30 @@ using overlay::UiText;
 
 namespace {
 
-constexpr const char* kStepNames[] = {"1 What happens", "2 Kind", "3 Items", "4 Tier", "5 Bonuses", "6 Levels", "7 Look", "8 Check"};
+constexpr const char* kStepNames[] = {"1 What happens", "2 Item Type", "3 Items", "4 Tier", "5 Stats", "6 Strictness", "7 Style", "8 Check"};
 constexpr const char* kStepHeadings[] = {
-    "What should happen to these items?", "What kind of item?", "Which items?",      "Which tiers?",
-    "Which bonuses?",                     "On which filter levels?", "How should it look?", "Your rule",
+    "What should happen to these items?", "What type of item?",          "Which items?",          "Which tiers?",
+    "Which stats?",                       "On which strictness levels?", "What style should it have?", "Your rule",
 };
 constexpr const char* kStepHints[] = {
-    "Hide: on the filter levels you pick. Show: never hidden on the levels you pick, with your look. Always Show: never hidden on any level.",
-    "Choose the kind first: the next steps only offer what fits it.",
+    "Hide: on the strictness levels you pick. Show: never hidden on the levels you pick, with your style. Always Show: "
+    "never hidden on any level.",
+    "Choose the item type first: the next steps only offer what fits it.",
     "Choose a list on the left, then tick items on the right. Or search by name.",
     "Leave every box as it is for all of them.",
-    "Tick the bonuses the item must have and how much. Rules with bonuses only work on identified items.",
-    "Leave every box ticked for every level.",
-    "Everything is optional: leave the game's look by choosing nothing. The picture shows the label on the ground.",
+    "Tick the stats the item must have, and how much. Rules with stats only work on identified items.",
+    "Leave every box ticked for every strictness level.",
+    "Everything is optional: leave the game's look by choosing nothing. The pictures show the label on the ground and the "
+    "minimap icon.",
     "Check it, then add it. Your rules come first in the filter: what they hide is hidden, what they show is never hidden.",
 };
 const char* const kTierLabels[] = {"Normal", "Exceptional", "Elite"};
 const gamedata::Tier kTiers[] = {gamedata::Tier::Normal, gamedata::Tier::Exceptional, gamedata::Tier::Elite};
 const char* const kMythLabels[] = {"With Mythicals", "Without Mythicals", "Only Mythicals"};
-const char* const kPickTargets[] = {"Border", "Background", "Light beam"};
 
 auto ToOverlay(const Rgb& c) -> overlay::Rgb {
     return overlay::Rgb{static_cast<std::uint8_t>(c.r), static_cast<std::uint8_t>(c.g), static_cast<std::uint8_t>(c.b)};
 }
-auto FromOverlay(const overlay::Rgb& c) -> Rgb { return Rgb{c.r, c.g, c.b}; }
 
 auto TierWord(gamedata::Tier t) -> const char* {
     switch (t) {
@@ -235,14 +235,14 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
 
     // 5 Bonuses.
     statSearch_.search = true;
-    statSearch_.placeholder = "Search the bonuses: life, skills, resist…";
+    statSearch_.placeholder = "Search the stats: life, skills, resist…";
     statSearch_.onChange = [this](const std::string&, Ui& ui) {
         RebuildStats();
         statList_.SetScroll(0);
         ui.Repaint();
     };
     statList_.rowGap = 0;
-    statList_.emptyText = "No bonuses";
+    statList_.emptyText = "No stats";
     statList_.paintRow = [this](Canvas& canvas, int index, const Box& row, const overlay::ListView::RowState&) {
         if (index < 0 || index >= static_cast<int>(statRows_.size())) return;
         const std::size_t at = static_cast<std::size_t>(statRows_[static_cast<std::size_t>(index)]);
@@ -311,8 +311,12 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
     backLabel_.text = "Background";
     nameLabel_.text = "Name colour";
     soundLabel_.text = "Drop sound";
-    pickLabel_.text = "Any colour for:";
-    for (overlay::Label* l : {&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &pickLabel_}) l->font = Font::Small;
+    iconLabel_.text = "Minimap icon";
+    iconSizeLabel_.text = "Size";
+    for (overlay::Label* l : {&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &iconLabel_, &iconSizeLabel_}) l->font = Font::Small;
+    iconSizeValue_.translate = false;
+    iconSizeValue_.font = Font::Small;
+    iconSizeValue_.flags = kLeft | kVCenter | kSingleLine;
     borderNone_.label = "None";
     backNone_.label = "None";
     nameGame_.label = "The game's";
@@ -327,12 +331,11 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
             s.color = ToOverlay(c.rgb);
         }
         const Rgb rgb = c.rgb;
-        borderSw_.back().onClick = [this, rgb](Ui& ui) { draft_.look.border = rgb; SetPickTarget(0); Changed(); ui.Repaint(); };
-        backSw_.back().onClick = [this, rgb](Ui& ui) { draft_.look.background = rgb; SetPickTarget(1); Changed(); ui.Repaint(); };
+        borderSw_.back().onClick = [this, rgb](Ui& ui) { draft_.look.border = rgb; Changed(); ui.Repaint(); };
+        backSw_.back().onClick = [this, rgb](Ui& ui) { draft_.look.background = rgb; Changed(); ui.Repaint(); };
         beamSw_.back().onClick = [this, rgb](Ui& ui) {
             draft_.look.beam = true;
             draft_.look.beamColor = rgb;
-            SetPickTarget(2);
             Changed();
             ui.Repaint();
         };
@@ -371,20 +374,28 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
         Changed();
         ui.Repaint();
     };
-    for (std::size_t i = 0; i < 3; ++i) {
-        overlay::Chip& chip = pickFor_.emplace_back();
-        chip.label = kPickTargets[i];
-        const int t = static_cast<int>(i);
-        chip.onClick = [this, t](Ui& ui) { SetPickTarget(t); ui.Repaint(); };
-    }
-    picker_.onChange = [this](overlay::Rgb color, Ui& ui) {
-        const Rgb c = FromOverlay(color);
-        if (pickTarget_ == 0) draft_.look.border = c;
-        else if (pickTarget_ == 1) draft_.look.background = c;
-        else {
-            draft_.look.beam = true;
-            draft_.look.beamColor = c;
-        }
+    if (loaded_->session != nullptr) iconNames_ = loaded_->session->IconNames();
+    icon_.translate = false;
+    icon_.options = {UiText("No icon")};
+    for (const std::string& n : iconNames_) icon_.options.push_back(n);
+    icon_.selected = 0;
+    for (std::size_t i = 0; i < iconNames_.size(); ++i)
+        if (iconNames_[i] == draft_.look.icon) icon_.selected = static_cast<int>(i) + 1;
+    icon_.onChange = [this](int index, Ui& ui) {
+        draft_.look.icon = index <= 0 ? std::string{} : iconNames_[static_cast<std::size_t>(index - 1)];
+        Changed();
+        ui.Repaint();
+    };
+    iconSize_.minimum = 8;
+    iconSize_.maximum = 64;
+    iconSize_.step = 1;
+    iconSize_.SetValue(draft_.look.iconSize);
+    iconSize_.onChange = [this](int v, Ui& ui) {
+        draft_.look.iconSize = v;
+        iconSizeValue_.text = UiFormat("{0} px", {std::to_string(v)});
+        ui.Repaint();
+    };
+    iconSize_.onCommit = [this](int, Ui& ui) {
         Changed();
         ui.Repaint();
     };
@@ -472,7 +483,6 @@ auto AddRuleView::StepUsed(Step step) const -> bool {
 
 void AddRuleView::GoTo(Step step) {
     step_ = step;
-    if (step == Step::Look) SetPickTarget(pickTarget_);
     ShowStep();
     SyncControls();
 }
@@ -650,15 +660,6 @@ void AddRuleView::ToggleStat(int row, Ui& ui) {
     ui.Repaint();
 }
 
-void AddRuleView::SetPickTarget(int target) {
-    pickTarget_ = std::clamp(target, 0, 2);
-    const Look& look = draft_.look;
-    const Rgb color = pickTarget_ == 0 ? look.border.value_or(Rgb{255, 200, 0})
-                      : pickTarget_ == 1 ? look.background.value_or(Rgb{40, 40, 40})
-                                         : look.beamColor;
-    picker_.SetColor(ToOverlay(color));
-}
-
 void AddRuleView::PlayPreview(Ui&) {
     if (draft_.look.sound.empty() || loaded_->session == nullptr || loaded_->source == nullptr) return;
     // As the game plays it: the loot filter's volume for sound files times the filter's volume.
@@ -793,7 +794,12 @@ void AddRuleView::SyncControls() {
     beam_.on = look.beam;
     chat_.on = look.chat;
     play_.enabled = !look.sound.empty();
-    for (std::size_t i = 0; i < 3; ++i) pickFor_[i].selected = pickTarget_ == static_cast<int>(i);
+    icon_.selected = 0;
+    for (std::size_t i = 0; i < iconNames_.size(); ++i)
+        if (iconNames_[i] == look.icon) icon_.selected = static_cast<int>(i) + 1;
+    iconSize_.SetValue(look.iconSize);
+    iconSize_.enabled = !look.icon.empty();
+    iconSizeValue_.text = UiFormat("{0} px", {std::to_string(look.iconSize)});
     finish_.enabled = Complete(draft_);
     next_.visible = static_cast<int>(step_) < kSteps - 1;
 }
@@ -816,16 +822,16 @@ void AddRuleView::ShowStep() {
     for (Widget* w : std::initializer_list<Widget*>{&statSearch_, &statList_, &atLeastLabel_, &atLeast_}) w->visible = stats;
     for (overlay::Checkbox& b : levels_) b.visible = step_ == Step::Levels;
     const bool look = step_ == Step::Look;
-    for (Widget* w : std::initializer_list<Widget*>{&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &pickLabel_, &borderNone_, &backNone_,
-                                                    &nameGame_, &beam_, &chat_, &sound_, &play_, &chatText_, &picker_})
+    for (Widget* w : std::initializer_list<Widget*>{&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &borderNone_, &backNone_, &nameGame_,
+                                                    &beam_, &chat_, &sound_, &play_, &chatText_, &iconLabel_, &icon_, &iconSizeLabel_, &iconSize_,
+                                                    &iconSizeValue_})
         w->visible = look;
     for (auto* row : {&borderSw_, &backSw_, &nameSw_, &beamSw_, &chatSw_})
         for (overlay::Swatch& s : *row) s.visible = look;
-    for (overlay::Chip& c : pickFor_) c.visible = look;
     checkLines_.visible = step_ == Step::Check;
     heading_.text = kStepHeadings[static_cast<int>(step_)];
     hint_.text = step_ == Step::Bonuses && !offer_.statsPossible
-                     ? (offer_.statsWhy.empty() ? std::string("These items have no bonuses to choose.") : offer_.statsWhy)
+                     ? (offer_.statsWhy.empty() ? std::string("These items have no stats to choose.") : offer_.statsWhy)
                      : kStepHints[static_cast<int>(step_)];
 }
 
@@ -901,6 +907,7 @@ void AddRuleView::Layout(const LayoutContext& c) {
     summary_.color = Complete(draft_) ? theme.gold : theme.dim;
     const Box body{area.left, y, area.right, summary_.box.top - gap};
     previewBox_ = Box{};
+    minimapBox_ = Box{};
 
     switch (step_) {
         case Step::Action: {
@@ -980,7 +987,7 @@ void AddRuleView::Layout(const LayoutContext& c) {
             break;
         }
         case Step::Look: {
-            const int split = body.left + body.Width() * 60 / 100;
+            const int split = body.left + body.Width() * 68 / 100;  // the colour rows get most of the width
             const Box left{body.left, body.top, split - gap * 2, body.bottom};
             const Box right{split, body.top, body.right, body.bottom};
             const int swH = std::max(m.S(24), m.LineHeight(Font::Small) + m.S(8));
@@ -1020,19 +1027,17 @@ void AddRuleView::Layout(const LayoutContext& c) {
             chatText_.box = Box{chat_.box.right + gap, cy, left.right, cy + rowH};
             cy += rowH + m.S(4);
             row(nullptr, nullptr, chatSw_);
-            // Right: the picture, then any colour.
-            previewBox_ = Box{right.left, right.top, right.right, right.top + right.Height() * 42 / 100};
-            int ry = previewBox_.bottom + gap;
-            pickLabel_.box = Box{right.left, ry, right.right, ry + small};
-            ry += small;
-            int cx = right.left;
-            for (overlay::Chip& chip : pickFor_) {
-                const int w = m.TextWidth(UiText(chip.label), Font::Small) + m.S(20);
-                chip.box = Box{cx, ry, cx + w, ry + chipH};
-                cx += w + m.S(4);
-            }
-            ry += chipH + gap;
-            picker_.box = Box{right.left, ry, right.right, right.bottom};
+            iconLabel_.box = Box{left.left, cy, left.right, cy + small};
+            cy += small;
+            icon_.box = Box{left.left, cy, left.left + std::min(m.S(300), left.Width() / 2), cy + dropH};
+            iconSizeLabel_.box = Box{icon_.box.right + gap * 2, cy, icon_.box.right + gap * 2 + m.S(40), cy + dropH};
+            iconSizeLabel_.flags = kVCenter | kSingleLine;
+            iconSizeValue_.box = Box{left.right - m.S(60), cy, left.right, cy + dropH};
+            iconSizeValue_.color = theme.text;
+            iconSize_.box = Box{iconSizeLabel_.box.right + m.S(4), cy, iconSizeValue_.box.left - gap, cy + dropH};
+            // Right: the label on the ground, then the minimap.
+            previewBox_ = Box{right.left, right.top, right.right, right.top + right.Height() * 55 / 100};
+            minimapBox_ = Box{right.left, previewBox_.bottom + gap, right.right, right.bottom};
             break;
         }
         case Step::Check: {
@@ -1068,17 +1073,19 @@ void AddRuleView::FocusList(std::vector<Widget*>& out) {
     for (overlay::Swatch& s : beamSw_) out.push_back(&s);
     for (Widget* w : std::initializer_list<Widget*>{&soundLabel_, &sound_, &play_, &chat_, &chatText_}) out.push_back(w);
     for (overlay::Swatch& s : chatSw_) out.push_back(&s);
-    out.push_back(&pickLabel_);
-    for (overlay::Chip& c : pickFor_) out.push_back(&c);
-    out.push_back(&picker_);
+    for (Widget* w : std::initializer_list<Widget*>{&iconLabel_, &icon_, &iconSizeLabel_, &iconSize_, &iconSizeValue_}) out.push_back(w);
     for (Widget* w : std::initializer_list<Widget*>{&checkLines_, &summary_, &status_, &back_, &next_, &finish_}) out.push_back(w);
 }
 
 void AddRuleView::Paint(Canvas& canvas) {
     if (step_ != Step::Look || previewBox_.Width() <= 0) return;
+    PaintLabelPreview(canvas, previewBox_);
+    if (minimapBox_.Height() > canvas.S(40)) PaintMinimapPreview(canvas, minimapBox_);
+}
+
+void AddRuleView::PaintLabelPreview(Canvas& canvas, const Box& p) {
     // The label on the ground: a dark floor, the beam rising behind, the label with its background, border and name.
     const overlay::Theme& theme = canvas.GetTheme();
-    const Box& p = previewBox_;
     canvas.Fill(p, overlay::Rgb{22, 20, 18});
     canvas.Frame(p, theme.border);
     const Look& look = draft_.look;
@@ -1118,6 +1125,48 @@ void AddRuleView::Paint(Canvas& canvas) {
     if (!look.sound.empty())
         canvas.Text(UiFormat("Sound: {0}", {look.sound}), Box{p.left + canvas.S(10), p.top + canvas.S(6), p.right - canvas.S(10), p.top + canvas.S(6) + canvas.LineHeight(Font::Small)},
                     theme.dim, Font::Small, kSingleLine | kNoHighlight);
+}
+
+auto AddRuleView::IconPicture(const std::string& name) -> const Picture* {
+    if (name.empty() || loaded_->session == nullptr) return nullptr;
+    auto found = iconPictures_.find(name);
+    if (found == iconPictures_.end()) {
+        Picture picture;
+        if (!ReadSprite(loaded_->session->IconPath(name), 128, picture)) picture = Picture{};
+        found = iconPictures_.emplace(name, std::move(picture)).first;
+    }
+    return found->second.width > 0 ? &found->second : nullptr;
+}
+
+void AddRuleView::PaintMinimapPreview(Canvas& canvas, const Box& p) {
+    // The minimap where it dropped: a dark map, the player's marker, the icon at its size (as the game draws it at 100%).
+    const overlay::Theme& theme = canvas.GetTheme();
+    canvas.Fill(p, overlay::Rgb{14, 16, 20});
+    canvas.Frame(p, theme.border);
+    canvas.Text(UiText("Minimap"), Box{p.left + canvas.S(8), p.top + canvas.S(4), p.right - canvas.S(8), p.top + canvas.S(4) + canvas.LineHeight(Font::Small)},
+                theme.dim, Font::Small, kSingleLine | kNoHighlight);
+    // A few walls, so it reads as a map.
+    const overlay::Rgb wall{70, 74, 82};
+    const int cx = p.CentreX(), cy = p.CentreY() + canvas.S(8);
+    const int u = canvas.S(26);
+    canvas.Fill(Box{cx - 3 * u, cy - 2 * u, cx + 3 * u, cy - 2 * u + canvas.S(2)}, wall);
+    canvas.Fill(Box{cx - 3 * u, cy + 2 * u, cx + 3 * u, cy + 2 * u + canvas.S(2)}, wall);
+    canvas.Fill(Box{cx - 3 * u, cy - 2 * u, cx - 3 * u + canvas.S(2), cy + 2 * u}, wall);
+    canvas.Fill(Box{cx + 3 * u, cy - 2 * u, cx + 3 * u + canvas.S(2), cy + 2 * u + canvas.S(2)}, wall);
+    // The player.
+    const int px = cx - 2 * u, dot = canvas.S(5);
+    canvas.Fill(Box{px - dot, cy - dot, px + dot, cy + dot}, overlay::Rgb{230, 230, 230});
+    const Look& look = draft_.look;
+    const Picture* picture = IconPicture(look.icon);
+    const Box icon{cx + u - canvas.S(look.iconSize) / 2, cy - canvas.S(look.iconSize) / 2, cx + u + canvas.S(look.iconSize) / 2,
+                   cy + canvas.S(look.iconSize) / 2};
+    if (picture != nullptr) {
+        canvas.Pixels("icon:" + look.icon, picture->width, picture->height, picture->bgra, icon.Intersect(p));
+    } else {
+        canvas.Text(look.icon.empty() ? UiText("No icon") : UiFormat("{0} could not be read", {look.icon}),
+                    Box{p.left + canvas.S(8), p.bottom - canvas.S(6) - canvas.LineHeight(Font::Small), p.right - canvas.S(8), p.bottom - canvas.S(4)},
+                    theme.dim, Font::Small, kSingleLine | kNoHighlight);
+    }
 }
 
 void AddRuleView::HelpRows(const Widget*, std::vector<overlay::HelpRow>& out) const {

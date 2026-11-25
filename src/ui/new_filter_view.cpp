@@ -21,7 +21,6 @@ auto ToOverlay(const edit::Rgb3& c) -> overlay::Rgb {
                         static_cast<std::uint8_t>(std::clamp(c[2], 0, 255))};
 }
 auto FromUi(const ui::Rgb& c) -> edit::Rgb3 { return edit::Rgb3{c.r, c.g, c.b}; }
-auto FromOverlay(const overlay::Rgb& c) -> edit::Rgb3 { return edit::Rgb3{c.r, c.g, c.b}; }
 
 void PaintTick(Canvas& canvas, const Box& row, int indent, bool on) {
     const overlay::Theme& theme = canvas.GetTheme();
@@ -32,7 +31,6 @@ void PaintTick(Canvas& canvas, const Box& row, int indent, bool on) {
     if (on) canvas.Fill(tick.Inflated(-canvas.S(3)), theme.gold);
 }
 
-const char* const kPickTargets[] = {"Border", "Background", "Light beam"};
 
 }  // namespace
 
@@ -202,8 +200,8 @@ NewFilterView::NewFilterView(std::shared_ptr<Source> source, std::function<void(
         Changed();
         ui.Repaint();
     };
-    fromLabel_.text = "From level";
-    toLabel_.text = "To level";
+    fromLabel_.text = "From strictness level";
+    toLabel_.text = "To strictness level";
     clvlLabel_.text = "From character level (0: any)";
     amountLabel_.text = "Gold piles up to";
     for (overlay::Label* l : {&fromLabel_, &toLabel_, &clvlLabel_, &amountLabel_}) l->font = Font::Small;
@@ -313,9 +311,8 @@ NewFilterView::NewFilterView(std::shared_ptr<Source> source, std::function<void(
     borderLabel_.text = "Border";
     backLabel_.text = "Background";
     beamLabel_.text = "Light beam";
-    pickLabel_.text = "Any colour for:";
     volumeLabel_.text = "Filter volume";
-    for (overlay::Label* l : {&borderLabel_, &backLabel_, &beamLabel_, &pickLabel_, &volumeLabel_}) l->font = Font::Small;
+    for (overlay::Label* l : {&borderLabel_, &backLabel_, &beamLabel_, &volumeLabel_}) l->font = Font::Small;
     for (overlay::Chip* c : {&borderSame_, &backSame_, &beamSame_}) c->label = "As it is";
     borderSame_.onClick = [this](Ui& ui) { SetLook(0, nullptr); ui.Repaint(); };
     backSame_.onClick = [this](Ui& ui) { SetLook(1, nullptr); ui.Repaint(); };
@@ -329,26 +326,11 @@ NewFilterView::NewFilterView(std::shared_ptr<Source> source, std::function<void(
             s.color = ToOverlay(rgb);
             s.onClick = [this, what, rgb](Ui& ui) {
                 SetLook(what, &rgb);
-                pickWhat_ = what;
                 SyncControls();
                 ui.Repaint();
             };
         }
     }
-    for (int i = 0; i < 3; ++i) {
-        overlay::Chip& chip = pickFor_.emplace_back();
-        chip.label = kPickTargets[i];
-        chip.onClick = [this, i](Ui& ui) {
-            pickWhat_ = i;
-            SyncControls();
-            ui.Repaint();
-        };
-    }
-    picker_.onChange = [this](overlay::Rgb color, Ui& ui) {
-        const edit::Rgb3 c = FromOverlay(color);
-        SetLook(pickWhat_, &c);
-        ui.Repaint();
-    };
     volume_.minimum = 0;
     volume_.maximum = 100;
     volume_.step = 5;
@@ -635,9 +617,6 @@ void NewFilterView::SyncControls() {
     borderSame_.selected = mine == nullptr || !mine->border;
     backSame_.selected = mine == nullptr || !mine->background;
     beamSame_.selected = mine == nullptr || !mine->beam;
-    for (int p = 0; p < 3; ++p) pickFor_[static_cast<std::size_t>(p)].selected = pickWhat_ == p;
-    const std::optional<edit::Rgb3>& pick = pickWhat_ == 0 ? look.border : pickWhat_ == 1 ? look.background : look.beam;
-    picker_.SetColor(ToOverlay(pick.value_or(edit::Rgb3{255, 200, 0})));
     volume_.SetValue(recipe_.soundVolume);
     volumeValue_.text = std::to_string(recipe_.soundVolume);
     std::string why;
@@ -672,18 +651,17 @@ void NewFilterView::ShowStep() {
     show(parts && row != nullptr && hide, {&towns_, &addStep_});
     show(parts && row != nullptr && !row->copyOf.empty(), {&removeStep_});
     const bool look = key == "look";
-    show(look, {&styles_, &borderLabel_, &backLabel_, &beamLabel_, &pickLabel_, &borderSame_, &backSame_, &beamSame_, &picker_, &volumeLabel_,
-                &volume_, &volumeValue_, &test_});
+    show(look, {&styles_, &borderLabel_, &backLabel_, &beamLabel_, &borderSame_, &backSame_, &beamSame_, &volumeLabel_, &volume_, &volumeValue_,
+                &test_});
     for (auto* r : {&borderSw_, &backSw_, &beamSw_})
         for (overlay::Swatch& s : *r) s.visible = look;
-    for (overlay::Chip& c : pickFor_) c.visible = look;
     checkList_.visible = key == "check";
     const edit::StarterStep* step = step_ < StepCount() ? &starter_.steps[static_cast<std::size_t>(step_)] : nullptr;
     heading_.text = step != nullptr ? step->title : std::string{};
     heading_.translate = true;
     if (key == "name") hint_.text = UiText("Your own filter, made from Sully's QoL Filter's choices. Every step is filled in: change what you like, or go straight to Check.");
     else if (key == "levels") hint_.text = UiText("Strictness levels: players switch between them in game as they need less on the ground. Keep the names or type your own.");
-    else if (key == "look") hint_.text = UiText("The label styles: choose one, then its border, background and light beam. The picture shows it.");
+    else if (key == "look") hint_.text = UiText("The label styles: choose one, then its border, background and light beam colours. The picture shows it.");
     else if (key == "check") hint_.text = UiText("Your filter in words. Create makes it and switches the game to it; it opens in the editor like any filter.");
     else hint_.text = step != nullptr ? step->help : std::string{};
 }
@@ -794,7 +772,7 @@ void NewFilterView::Layout(const LayoutContext& c) {
         styles_.box = Box{body.left, body.top, body.left + leftW, body.bottom};
         styles_.rowHeight = rowH;
         const int mid = styles_.box.right + gap * 2;
-        const int midRight = mid + (body.right - mid) * 55 / 100;
+        const int midRight = body.right;  // the colour rows get the whole width; the picture goes under them
         const int swH = std::max(m.S(24), m.LineHeight(Font::Small) + m.S(8));
         int cy = body.top;
         const auto row = [&](overlay::Label& label, overlay::Chip& same, std::vector<overlay::Swatch>& swatches) {
@@ -814,23 +792,17 @@ void NewFilterView::Layout(const LayoutContext& c) {
         row(borderLabel_, borderSame_, borderSw_);
         row(backLabel_, backSame_, backSw_);
         row(beamLabel_, beamSame_, beamSw_);
-        pickLabel_.box = Box{mid, cy, midRight, cy + small};
-        cy += small;
-        int cx = mid;
-        for (overlay::Chip& chip : pickFor_) {
-            const int w = m.TextWidth(UiText(chip.label), Font::Small) + m.S(18);
-            chip.box = Box{cx, cy, cx + w, cy + chipH};
-            cx += w + m.S(4);
-        }
-        cy += chipH + gap;
-        picker_.box = Box{mid, cy, midRight, std::max(cy + m.S(120), body.bottom - fieldH - small - gap)};
-        cy = picker_.box.bottom + gap;
+        cy += gap;
         volumeLabel_.box = Box{mid, cy, mid + m.S(110), cy + fieldH};
         volume_.box = Box{mid + m.S(110), cy, midRight - m.S(130), cy + fieldH};
         volumeValue_.box = Box{volume_.box.right + m.S(4), cy, volume_.box.right + m.S(44), cy + fieldH};
         volumeValue_.color = theme.text;
         test_.box = Box{midRight - m.S(80), cy, midRight, cy + fieldH};
-        previewBox_ = Box{midRight + gap * 2, body.top, body.right, body.top + std::min(body.Height(), m.S(220))};
+        volume_.box.right = std::min(volume_.box.right, mid + m.S(420));
+        volumeValue_.box = Box{volume_.box.right + m.S(4), cy, volume_.box.right + m.S(44), cy + fieldH};
+        test_.box = Box{volumeValue_.box.right + gap, cy, volumeValue_.box.right + gap + m.S(80), cy + fieldH};
+        cy += fieldH + gap * 2;
+        previewBox_ = Box{mid, cy, body.right, std::min(body.bottom, cy + m.S(200))};
     } else if (key == "check") {
         checkList_.box = body;
         checkList_.rowHeight = std::max(m.S(24), m.LineHeight(Font::Bold) + m.S(6));
@@ -896,9 +868,7 @@ void NewFilterView::FocusList(std::vector<Widget*>& out) {
     out.push_back(&beamLabel_);
     out.push_back(&beamSame_);
     for (overlay::Swatch& s : beamSw_) out.push_back(&s);
-    out.push_back(&pickLabel_);
-    for (overlay::Chip& c : pickFor_) out.push_back(&c);
-    for (Widget* w : std::initializer_list<Widget*>{&picker_, &volumeLabel_, &volume_, &volumeValue_, &test_, &checkList_, &problem_, &back_, &next_, &create_})
+    for (Widget* w : std::initializer_list<Widget*>{&volumeLabel_, &volume_, &volumeValue_, &test_, &checkList_, &problem_, &back_, &next_, &create_})
         out.push_back(w);
 }
 

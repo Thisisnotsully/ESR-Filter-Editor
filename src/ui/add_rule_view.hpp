@@ -12,6 +12,7 @@
 #pragma once
 
 #include <deque>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@
 #include "browse_view.hpp"
 #include "pickers.hpp"
 #include "rule_draft.h"
+#include "sprite.h"
 
 namespace esrfe::ui {
 
@@ -77,12 +79,13 @@ public:
     auto BackgroundSwatch(std::size_t i) -> overlay::Swatch& { return backSw_[i]; }
     auto NameSwatch(std::size_t i) -> overlay::Swatch& { return nameSw_[i]; }
     auto Beam() -> overlay::Checkbox& { return beam_; }
+    auto BeamSwatch(std::size_t i) -> overlay::Swatch& { return beamSw_[i]; }
     auto Sound() -> overlay::Dropdown& { return sound_; }
     auto PlayButton() -> overlay::Button& { return play_; }
     auto Chat() -> overlay::Checkbox& { return chat_; }
     auto ChatText() -> overlay::TextBox& { return chatText_; }
-    auto Picker() -> overlay::ColorPicker& { return picker_; }
-    auto PickFor(std::size_t i) -> overlay::Chip& { return pickFor_[i]; }
+    auto Icon() -> overlay::Dropdown& { return icon_; }
+    auto IconSize() -> overlay::Slider& { return iconSize_; }
     auto Finish() -> overlay::Button& { return finish_; }
     auto Next() -> overlay::Button& { return next_; }
     [[nodiscard]] auto Status() const -> const std::string& { return status_.text; }
@@ -98,7 +101,9 @@ private:
     void RebuildStats();
     void Save(Ui& ui);
     void PlayPreview(Ui& ui);
-    void SetPickTarget(int target);  // 0 border, 1 background, 2 beam
+    void PaintLabelPreview(Canvas& canvas, const Box& box);
+    void PaintMinimapPreview(Canvas& canvas, const Box& box);
+    auto IconPicture(const std::string& name) -> const Picture*;  // read once, kept
     [[nodiscard]] auto Picked(const Entry& e) const -> bool;
     [[nodiscard]] auto RulesNow() const -> std::vector<edit::OwnRule>;
 
@@ -117,8 +122,10 @@ private:
     std::vector<std::string> soundFiles_;
     RuleSummary summaryNow_;
     std::vector<std::string> checkText_;
-    int pickTarget_ = 0;
     Box previewBox_{};
+    Box minimapBox_{};
+    std::vector<std::string> iconNames_;
+    std::map<std::string, Picture> iconPictures_;
 
     std::deque<overlay::Chip> stepChips_;
     overlay::Label heading_, hint_;
@@ -137,15 +144,15 @@ private:
     overlay::Label atLeastLabel_;
     overlay::NumberBox atLeast_;
     std::deque<overlay::Checkbox> levels_;
-    overlay::Label borderLabel_, backLabel_, nameLabel_, soundLabel_, pickLabel_;
+    overlay::Label borderLabel_, backLabel_, nameLabel_, soundLabel_, iconLabel_, iconSizeLabel_, iconSizeValue_;
     overlay::Chip borderNone_, backNone_, nameGame_;
     std::deque<overlay::Swatch> borderSw_, backSw_, nameSw_, beamSw_, chatSw_;
     overlay::Checkbox beam_, chat_;
     overlay::Dropdown sound_;
     overlay::Button play_;
     overlay::TextBox chatText_;
-    std::deque<overlay::Chip> pickFor_;
-    overlay::ColorPicker picker_;
+    overlay::Dropdown icon_;
+    overlay::Slider iconSize_;
     overlay::ListView checkLines_;
     overlay::Label summary_, status_;
     overlay::Button back_, next_, finish_;

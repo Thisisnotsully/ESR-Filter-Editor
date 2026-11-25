@@ -76,6 +76,8 @@ public:
         drawn.push_back(Utf16ToUtf8(text));
     }
     auto Image(std::string_view, const Box&) -> bool override { return false; }
+    std::vector<std::string> pictures;  // the keys of Pixels pictures drawn
+    void Pixels(std::string_view key, int, int, const std::vector<std::uint8_t>&, const Box&) override { pictures.emplace_back(key); }
     void PushClip(const Box&) override { maxClipDepth = std::max(maxClipDepth, ++clipDepth); }
     void PopClip() override {
         if (--clipDepth < 0) clipUnbalanced = true;

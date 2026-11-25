@@ -65,6 +65,7 @@ public:
     void Text(std::string_view utf8, const Box& box, Rgb color, Font font, unsigned flags) override;
     void Text16(std::u16string_view text, const Box& box, Rgb color, Font font, unsigned flags) override;
     auto Image(std::string_view key, const Box& box) -> bool override;
+    void Pixels(std::string_view key, int width, int height, const std::vector<std::uint8_t>& bgra, const Box& box) override;
     void PushClip(const Box& box) override;
     void PopClip() override;
     void SetHighlight(const Highlight* highlight) override { highlight_ = highlight; }
@@ -100,6 +101,7 @@ private:
     std::vector<Layer> spareLayers_;  // kept for the next frame while the size stays
     const Highlight* highlight_ = nullptr;
     std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> images_;
+    std::map<std::string, std::pair<std::vector<std::uint8_t>, std::unique_ptr<Gdiplus::Bitmap>>> pixels_;  // the bitmap uses the bytes
     struct MeasureKey {
         std::size_t textHash;
         int width;

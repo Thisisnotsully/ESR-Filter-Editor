@@ -7,6 +7,7 @@ add_library(ui STATIC
     rule_draft.cpp
     rule_text.cpp
     rule_view.cpp
+    sprite.cpp
     version_name_view.cpp)
 target_include_directories(ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ui PUBLIC overlay_core document gamedata edit)

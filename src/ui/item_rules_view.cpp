@@ -60,13 +60,24 @@ ItemRulesView::ItemRulesView(std::shared_ptr<Loaded> loaded, ItemRules item, Dra
     state_.translate = false;
     state_.font = Font::Body;
     state_.useThemeColor = false;
-    if (item_.hidden) {
-        if (item_.hiddenUnmatched) state_.text = UiText("Hidden: no rule matched it, and the filter hides what no rule matches.");
-        else if (!item_.hiddenBy.empty()) state_.text = UiFormat("Hidden by {0}.", {item_.hiddenBy});
-        else state_.text = UiText("Hidden by a rule.");
-    } else {
-        state_.text = UiText("Shown on the ground.");
+    // Where it is; a carried item is judged as if it had just dropped where the player is.
+    std::string where;
+    switch (item_.location) {
+        case 0: break;
+        case 1: where = UiText("In your inventory, stash or cube."); break;
+        case 2: where = UiText("Equipped."); break;
+        case 3: where = UiText("At a vendor."); break;
+        default: where = UiText("Not on the ground."); break;
     }
+    std::string verdict;
+    if (item_.hidden) {
+        if (item_.hiddenUnmatched) verdict = UiText("Hidden: no rule matched it, and the filter hides what no rule matches.");
+        else if (!item_.hiddenBy.empty()) verdict = UiFormat("Hidden by {0}.", {item_.hiddenBy});
+        else verdict = UiText("Hidden by a rule.");
+    } else {
+        verdict = item_.location == 0 ? UiText("Shown on the ground.") : UiText("Shown.");
+    }
+    state_.text = where.empty() ? verdict : where + "  " + UiFormat("If it dropped here: {0}", {verdict});
     if (rows_.empty()) state_.text += "  " + UiText("No rule matched it.");
     else state_.text += "  " + UiFormat("Rules that match it: {0}.", {std::to_string(rows_.size())});
     if (item_.more) state_.text += "  " + UiText("(Only the first ones are listed.)");

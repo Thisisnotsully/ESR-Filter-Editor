@@ -58,8 +58,10 @@ struct Look {
     bool chat = false;
     std::string chatText = "{name}";  // {name}: the item's name
     int chatColor = 4;   // NameColors index
+    std::string icon;    // a minimap icon: a .sprite of the filter's icons folder (without .sprite), "" for none
+    int iconSize = 27;   // its size on the minimap, in pixels (the loot filter takes 4-256)
     [[nodiscard]] auto Any() const -> bool {
-        return border || background || nameColor >= 0 || beam || !sound.empty() || chat;
+        return border || background || nameColor >= 0 || beam || !sound.empty() || chat || !icon.empty();
     }
     friend auto operator==(const Look&, const Look&) -> bool = default;
 };

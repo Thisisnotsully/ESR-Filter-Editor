@@ -118,6 +118,9 @@ public:
     // The author's sound files ("gong.mp3"), sorted, and where one is.
     [[nodiscard]] auto SoundFiles() const -> std::vector<std::string>;
     [[nodiscard]] auto SoundPath(const std::string& file) const -> std::string;
+    // The filter's minimap icons: the names (without .sprite) of the files in its icons folder, sorted.
+    [[nodiscard]] auto IconNames() const -> std::vector<std::string>;
+    [[nodiscard]] auto IconPath(const std::string& name) const -> std::string;
 
     void Resolve(const Conflict& conflict, bool keepMine);
     // The update is taken in: later merges compare with this version of the author's filter.

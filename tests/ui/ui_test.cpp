@@ -18,6 +18,7 @@
 #include "item_rules_view.hpp"
 #include "new_filter_view.hpp"
 #include "version_name_view.hpp"
+#include "sprite.h"
 #include "rule_draft.h"
 #include "rule_text.h"
 #include "rule_view.hpp"
@@ -598,6 +599,26 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     {
         std::filesystem::create_directories(user / "QoL-Filter" / "sounds");
         edit::WriteText((user / "QoL-Filter" / "sounds" / "gong.mp3").string(), "GONG");
+        {  // a 2x2 minimap icon: red, green, blue, see-through
+            std::string sprite("SpA1", 4);
+            const auto u16 = [&sprite](unsigned v) { sprite += static_cast<char>(v & 0xFF); sprite += static_cast<char>(v >> 8); };
+            u16(31);
+            u16(2);
+            u16(2);
+            u16(0);
+            sprite.resize(40, '\0');
+            sprite += std::string("\xFF\x00\x00\xFF\x00\xFF\x00\xFF\x00\x00\xFF\xFF\x00\x00\x00\x00", 16);
+            std::filesystem::create_directories(user / "QoL-Filter" / "icons");
+            edit::WriteText((user / "QoL-Filter" / "icons" / "star.sprite").string(), sprite);
+            edit::WriteText((user / "QoL-Filter" / "icons" / "star.lowend.sprite").string(), sprite);
+            edit::WriteText((user / "QoL-Filter" / "icons" / "note.txt").string(), "not an icon");
+            Picture picture;
+            CHECK(ReadSprite((user / "QoL-Filter" / "icons" / "star.sprite").string(), 64, picture));
+            CHECK(picture.width == 2 && picture.height == 2 && picture.bgra.size() == 16);
+            CHECK(picture.bgra[2] == 255 && picture.bgra[0] == 0 && picture.bgra[3] == 255);  // red, as BGRA
+            CHECK(picture.bgra[15] == 0);                                                     // see-through
+            CHECK(!ReadSprite((user / "QoL-Filter" / "icons" / "note.txt").string(), 64, picture));
+        }
         h.source->info.textHash += 1;  // read the player's copy afresh
         h.Show();
         data = h.view->Data();
@@ -684,15 +705,29 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                     allSkills = i;
             CHECK(allSkills >= 0);
             steps->ToggleStat(allSkills, f);
-            // The look: a red border, a blue beam from the picker, a sound (heard at 80 x the filter's volume), a chat line.
+            // The style: a red border, a blue beam, a minimap icon at 32 px, a sound (heard at 80 x the filter's volume), a chat line.
             steps->GoTo(Step::Look);
             layout();
             click(steps->BorderSwatch(1));
             CHECK(steps->Draft().look.border == Swatches()[1].rgb);
-            click(steps->PickFor(2));
-            steps->Picker().SetColor(esrfe::overlay::Rgb{0, 0, 255});
-            steps->Picker().onChange(esrfe::overlay::Rgb{0, 0, 255}, f);
-            CHECK(steps->Draft().look.beam && (steps->Draft().look.beamColor == Rgb{0, 0, 255}));
+            int blue = -1;
+            for (std::size_t i = 0; i < Swatches().size(); ++i)
+                if (std::string(Swatches()[i].english) == "Blue") blue = static_cast<int>(i);
+            CHECK(blue >= 0);
+            click(steps->BeamSwatch(static_cast<std::size_t>(blue)));
+            CHECK(steps->Draft().look.beam && steps->Draft().look.beamColor == Swatches()[static_cast<std::size_t>(blue)].rgb);
+            CHECK(steps->Icon().options.size() == 2 && steps->Icon().options[1] == "star");  // .lowend and other files left out
+            CHECK(!steps->IconSize().enabled);
+            steps->Icon().onChange(1, f);
+            CHECK(steps->Draft().look.icon == "star" && steps->Draft().look.iconSize == 27 && steps->IconSize().enabled);
+            steps->IconSize().SetValue(32);
+            steps->IconSize().onChange(32, f);
+            steps->IconSize().onCommit(32, f);
+            CHECK(steps->Draft().look.iconSize == 32);
+            layout();
+            h.platform.canvas.pictures.clear();
+            f.Paint(h.platform.canvas);
+            CHECK(std::find(h.platform.canvas.pictures.begin(), h.platform.canvas.pictures.end(), "icon:star") != h.platform.canvas.pictures.end());
             CHECK(steps->Sound().options.size() == 2);
             h.source->played.clear();
             steps->Sound().onChange(1, f);
@@ -725,6 +760,8 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             CHECK(edit::Parse(saved, changes, error));
             CHECK(changes.own.size() == 1 && changes.own[0].id == "U001" && changes.own[0].place == "end" && changes.own[0].keepShown);
             CHECK(changes.own.size() == 1 && changes.own[0].rule.Find("sound") != nullptr && changes.own[0].rule.Find("chatMessage") != nullptr);
+            CHECK(changes.own.size() == 1 && changes.own[0].rule.Find("icon") != nullptr &&
+                  *changes.own[0].rule.Find("icon") == document::Value::Object({{"iconName", document::Value::String("star")}, {"iconSize", document::Value::Integer(32)}}));
             CHECK(changes.own.size() == 1 && changes.own[0].rule.Find("comment")->Str().rfind("U001 | Mystic Staff", 0) == 0);
             std::string copyText;
             CHECK(edit::ReadText((user / "Sullys-QoL-Filter (my version).json").string(), copyText));
@@ -765,6 +802,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                 // Shown on every level: the same as Always Show.
                 CHECK(again->Draft().action == DraftAction::AlwaysShow && again->Draft().kind == ItemKind::Base && again->Draft().stats.size() == 1);
                 CHECK(again->Draft().look.sound == "gong.mp3" && again->Draft().look.chatText == "Found {name}");
+                CHECK(again->Draft().look.icon == "star" && again->Draft().look.iconSize == 32);
                 esrfe::overlay::Form af{h.platform, again};
                 af.Layout(h.client, h.content);
                 again->BorderSwatch(0).onClick(af);
@@ -827,6 +865,15 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             about->AddButton().onClick(af);
             auto add = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
             CHECK(add != nullptr && add->Draft().kind == ItemKind::Unique && add->Draft().uniques == std::vector<int>{85});
+        }
+        // A carried item: where it is, and what the filter would do if it dropped here.
+        {
+            ItemRules carried = item;
+            carried.location = 1;
+            h.platform.pushed.clear();
+            h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("aq2", 7, 85, {}, g); }, carried);
+            auto inv = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<ItemRulesView>(h.platform.pushed.back());
+            CHECK(inv != nullptr && inv->State().rfind("In your inventory, stash or cube.  If it dropped here: Hidden by R133.", 0) == 0);
         }
         // No rule matched: straight to the steps.
         h.platform.pushed.clear();
@@ -1019,7 +1066,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             // Look: the uniques' border red.
             wizard->GoTo(8);
             layout();
-            CHECK(wizard->StepKey() == "look" && wizard->Picker().visible);
+            CHECK(wizard->StepKey() == "look" && wizard->Styles().visible);
             wizard->BorderSwatch(1).onClick(wf);
             wf.Paint(h.platform.canvas);
             CHECK(!wizard->Answers().looks.empty());

@@ -70,7 +70,6 @@ public:
     auto Styles() -> overlay::ListView& { return styles_; }
     auto BorderSwatch(std::size_t i) -> overlay::Swatch& { return borderSw_[i]; }
     auto BeamSwatch(std::size_t i) -> overlay::Swatch& { return beamSw_[i]; }
-    auto Picker() -> overlay::ColorPicker& { return picker_; }
     auto Volume() -> overlay::Slider& { return volume_; }
     auto TestSound() -> overlay::Button& { return test_; }
     auto Next() -> overlay::Button& { return next_; }
@@ -103,7 +102,6 @@ private:
     int step_ = 0;
     std::vector<Line> lines_;
     std::vector<std::string> checkText_;
-    int pickWhat_ = 0;
     Box previewBox_{};
 
     std::vector<overlay::Chip> stepChips_;
@@ -132,11 +130,9 @@ private:
     overlay::Button addStep_, removeStep_;
     // Look.
     overlay::ListView styles_;
-    overlay::Label borderLabel_, backLabel_, beamLabel_, pickLabel_, volumeLabel_;
+    overlay::Label borderLabel_, backLabel_, beamLabel_, volumeLabel_;
     overlay::Chip borderSame_, backSame_, beamSame_;
     std::vector<overlay::Swatch> borderSw_, backSw_, beamSw_;
-    std::vector<overlay::Chip> pickFor_;
-    overlay::ColorPicker picker_;
     overlay::Slider volume_;
     overlay::Label volumeValue_;
     overlay::Button test_;

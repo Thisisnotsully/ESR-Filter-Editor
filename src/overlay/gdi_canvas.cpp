@@ -374,7 +374,10 @@ auto GdiCanvas::FindImage(const std::string& key) -> Gdiplus::Bitmap* {
     return raw;
 }
 
-void GdiCanvas::ReleaseImages() { images_.clear(); }
+void GdiCanvas::ReleaseImages() {
+    images_.clear();
+    pixels_.clear();
+}
 
 auto GdiCanvas::Image(std::string_view key, const Box& box) -> bool {
     if (dc_ == nullptr || box.Empty()) return false;
@@ -390,6 +393,26 @@ auto GdiCanvas::Image(std::string_view key, const Box& box) -> bool {
     graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
     graphics.DrawImage(bitmap, box.left + (box.Width() - drawWidth) / 2, box.top + (box.Height() - drawHeight) / 2, drawWidth, drawHeight);
     return true;
+}
+
+void GdiCanvas::Pixels(std::string_view key, int width, int height, const std::vector<std::uint8_t>& bgra, const Box& box) {
+    if (dc_ == nullptr || box.Empty() || width <= 0 || height <= 0 || bgra.size() < static_cast<std::size_t>(width) * height * 4) return;
+    auto found = pixels_.find(std::string(key));
+    if (found == pixels_.end()) {
+        if (pixels_.size() > 64) pixels_.clear();  // a few icons at a time; never grows without end
+        auto& entry = pixels_[std::string(key)];
+        entry.first = bgra;
+        entry.second = std::make_unique<Gdiplus::Bitmap>(width, height, width * 4, PixelFormat32bppARGB, entry.first.data());
+        found = pixels_.find(std::string(key));
+    }
+    Gdiplus::Bitmap* bitmap = found->second.second.get();
+    if (bitmap == nullptr || bitmap->GetLastStatus() != Gdiplus::Ok) return;
+    const double scale = std::min(box.Width() / static_cast<double>(width), box.Height() / static_cast<double>(height));
+    const int drawWidth = std::max(1, static_cast<int>(width * scale));
+    const int drawHeight = std::max(1, static_cast<int>(height * scale));
+    Gdiplus::Graphics graphics(Current());
+    graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+    graphics.DrawImage(bitmap, box.left + (box.Width() - drawWidth) / 2, box.top + (box.Height() - drawHeight) / 2, drawWidth, drawHeight);
 }
 
 // ---- background ----------------------------------------------------------------------------------------------------

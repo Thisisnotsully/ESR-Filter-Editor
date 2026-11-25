@@ -69,7 +69,8 @@ struct RuleDraft;
 // The hovered item as the loot filter answered.
 struct ItemRules {
     std::string name;           // as the game shows it, colour codes taken out
-    bool hidden = false;        // a rule hides it (it can only be pointed at with Show Hidden Items on)
+    int location = 0;           // 0 on the ground, 1 an inventory / the stash / the cube, 2 equipped, 3 at a vendor, 4 elsewhere
+    bool hidden = false;        // a rule hides it (on the ground; for a carried item: if it dropped where the player is)
     bool hiddenUnmatched = false;  // hidden by the filter's hideUnmatchedItems: no rule matched
     std::string hiddenBy;       // the hiding rule's id ("R105"), "" when none or it has no id
     struct Match {

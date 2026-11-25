@@ -16,7 +16,7 @@
   },
   {
    "key": "levels",
-   "title": "Levels"
+   "title": "Strictness"
   },
   {
    "key": "protect",
@@ -50,7 +50,7 @@
   },
   {
    "key": "look",
-   "title": "Look"
+   "title": "Style"
   },
   {
    "key": "check",

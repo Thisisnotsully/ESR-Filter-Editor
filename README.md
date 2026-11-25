@@ -192,3 +192,15 @@ Build and install with `build-and-install.bat` (it now also copies `data\new-fil
 - [ ] Sounds play (copied from Sully's filter). Icons show when Sully's QoL-Filter folder is installed; without it the filter has no icons, and no errors.
 - [ ] The made filter takes your own rules and changes like any of your versions (it needs no naming: it is yours).
 
+## 0.9: style icons, step names, inventory items (test build)
+
+Build and install with `build-and-install.bat` (it builds the loot filter from the fork too: the bridge is version 2).
+
+- [ ] The add-rule steps read: 1 What happens, 2 Item Type, 3 Items, 4 Tier, 5 Stats, 6 Strictness, 7 Style, 8 Check. The new-filter questions say Strictness and Style.
+- [ ] Style: no colour square any more; the colour buttons are wider and their names fit (Set, Magic, Unique, Rare for the name colours).
+- [ ] Style: **Minimap icon** lists the filter's icons (Sully's: Myth, charm, cube, gem, gem2, gemP, goldstar, map, redD, rune, scroll, star); **Size** 8-64 px (27 to start). The Minimap picture shows the icon at that size next to the player's dot. In game the item gets that icon on the minimap. Changing the rule later shows the icon and size again.
+- [ ] Edit-item key on an item in the inventory, stash, cube, equipped or at a vendor: the editor opens on it. With rules matching: "In your inventory, stash or cube. If it dropped here: Shown / Hidden by R…". Without: the steps, the item chosen. The log line says location=1 (2 equipped, 3 vendor).
+- [ ] With the game's comparison tooltip showing (your equipped item beside it), the key still takes the item under the cursor, not the equipped one.
+- [ ] The key works while the inventory, stash or a vendor is open (if it does nothing there, say so: the editor's key may not reach it while a panel is open).
+- [ ] Ground items work as before.
+

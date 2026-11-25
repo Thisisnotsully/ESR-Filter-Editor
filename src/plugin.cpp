@@ -336,7 +336,7 @@ auto PrintItem(const Bridge::HoveredItem& item, bool chat) -> std::vector<esrfe:
         + " quality=" + Number(item.quality) + " baseTier=" + Number(item.baseTier) + " ilvl=" + Number(item.itemLevel)
         + " sockets=" + Number(item.sockets) + "/" + Number(item.maxSockets) + " uniqueOrSetId=" + Number(item.uniqueOrSetId)
         + " ethereal=" + Number(item.ethereal) + " identified=" + Number(item.identified) + " runeword=" + Number(item.runeword)
-        + " gold=" + Number(item.gold) + " chronicle=" + Number(item.chronicle) + " hidden=" + Number(item.hidden) + " nameChanged=" + Number(item.nameChanged)
+        + " location=" + Number(item.location) + " gold=" + Number(item.gold) + " chronicle=" + Number(item.chronicle) + " hidden=" + Number(item.hidden) + " nameChanged=" + Number(item.nameChanged)
         + " hiddenBy=" + Number(item.hiddenBy) + " (" + hiddenText + ") matched=" + Number(item.matchedCount)
         + " revision=" + std::to_string(item.filterRevision) + " rules=[" + fullRules + "]";
     if (item.matchedCount > listed) log += " (list holds " + Number(listed) + " of " + Number(item.matchedCount) + ")";
@@ -358,6 +358,7 @@ void OpenRuleForItem(const std::string& code, int quality, int uniqueOrSetId, st
 auto RulesOf(const Bridge::HoveredItem& item) -> esrfe::ui::ItemRules {
     esrfe::ui::ItemRules out;
     out.name = Text(item.name);
+    out.location = item.location;  // 0 (on the ground) from a version 1 bridge
     out.hidden = item.hidden != 0;
     out.hiddenUnmatched = item.hiddenBy == -1;
     const auto idOf = [](const std::string& title) {
@@ -976,7 +977,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.8.0",
+    .version     = "0.9.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,

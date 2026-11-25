@@ -21,7 +21,7 @@ R = lambda a, b: ["R%03d" % n for n in range(a, b + 1)]
 
 STEPS = [
     {"key": "name", "title": "Name"},
-    {"key": "levels", "title": "Levels"},
+    {"key": "levels", "title": "Strictness"},
     {"key": "protect", "title": "Always show",
      "help": "Items no other rule can hide. Each one can be limited to the lower levels."},
     {"key": "gold", "title": "Gold and potions",
@@ -34,7 +34,7 @@ STEPS = [
      "help": "Uniques and sets by tier, rings, amulets, charms and Ancient Coupons."},
     {"key": "announce", "title": "Announcements and labels",
      "help": "Chat lines, sounds, label colours and short names. Turn off what you do not want."},
-    {"key": "look", "title": "Look"},
+    {"key": "look", "title": "Style"},
     {"key": "check", "title": "Check"},
 ]
 

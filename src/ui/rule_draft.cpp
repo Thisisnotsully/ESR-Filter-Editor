@@ -61,9 +61,9 @@ auto Swatches() -> const std::vector<NamedColor>& {
 
 auto NameColors() -> const std::vector<NameColor>& {
     static const std::vector<NameColor> colors{
-        {"White", '0', {255, 255, 255}},      {"Red", '1', {255, 77, 77}},            {"Set green", '2', {0, 255, 0}},
-        {"Magic blue", '3', {105, 105, 255}}, {"Unique gold", '4', {199, 179, 119}}, {"Grey", '5', {105, 105, 105}},
-        {"Orange", '8', {255, 168, 0}},       {"Rare yellow", '9', {255, 255, 100}}, {"Dark green", ':', {0, 128, 0}},
+        {"White", '0', {255, 255, 255}},      {"Red", '1', {255, 77, 77}},            {"Set", '2', {0, 255, 0}},
+        {"Magic", '3', {105, 105, 255}}, {"Unique", '4', {199, 179, 119}}, {"Grey", '5', {105, 105, 105}},
+        {"Orange", '8', {255, 168, 0}},       {"Rare", '9', {255, 255, 100}}, {"Dark green", ':', {0, 128, 0}},
         {"Purple", ';', {174, 0, 255}},
     };
     return colors;
@@ -167,7 +167,7 @@ auto Offer(const RuleDraft& draft, const gamedata::GameData& game) -> DraftOffer
     const bool magic = draft.kind == ItemKind::Magic;
     offer.statsPossible = (superior || magic) && !chosen.empty();
     if (!offer.statsPossible) {
-        if (draft.kind == ItemKind::Base) offer.statsWhy = "Bonuses are for superior bases: choose Superior only to filter by them.";
+        if (draft.kind == ItemKind::Base) offer.statsWhy = "Stats are for superior bases: choose Superior only to filter by them.";
         return offer;
     }
     const std::vector<gamedata::StatRange> ranges = superior ? game.SuperiorStatsFor(chosen) : game.MagicStatsFor(chosen);
@@ -251,6 +251,8 @@ void PutLook(Value& rule, const Look& look) {
         rule.Set("droplight", Value::Object({{"color", Value::Array({Value::Integer(look.beamColor.r), Value::Integer(look.beamColor.g),
                                                                       Value::Integer(look.beamColor.b)})}}));
     if (!look.sound.empty()) rule.Set("sound", Value::String(look.sound));
+    if (!look.icon.empty())
+        rule.Set("icon", Value::Object({{"iconName", Value::String(look.icon)}, {"iconSize", Value::Integer(std::clamp(look.iconSize, 4, 256))}}));
     if (look.chat) {
         const int c = std::clamp(look.chatColor, 0, static_cast<int>(NameColors().size()) - 1);
         rule.Set("chatMessage", Value::String(std::string("\xC3\xBF" "c") + NameColors()[static_cast<std::size_t>(c)].code + look.chatText));
@@ -434,6 +436,11 @@ auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out)
         ReadRgb(light->Find("color"), look.beamColor);
     }
     if (const Value* sound = rule.Find("sound"); sound != nullptr && sound->IsString()) look.sound = sound->Str();
+    if (const Value* icon = rule.Find("icon"); icon != nullptr && icon->IsObject()) {
+        if (const Value* name = icon->Find("iconName"); name != nullptr && name->IsString()) look.icon = name->Str();
+        std::int64_t size = look.iconSize;
+        if (const Value* v = icon->Find("iconSize"); v != nullptr && v->AsInteger(size)) look.iconSize = static_cast<int>(size);
+    }
     if (const Value* chat = rule.Find("chatMessage"); chat != nullptr && chat->IsString()) {
         look.chat = true;
         std::string text = chat->Str();

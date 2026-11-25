@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 #include "color_text.hpp"
 #include "geometry.hpp"
@@ -52,6 +53,9 @@ public:
     virtual void Text16(std::u16string_view text, const Box& box, Rgb color, Font font, unsigned flags) = 0;  // raw
     // <dataDir>\images\<key>.png, fitted into the box keeping its proportions. False when there is no such picture.
     virtual auto Image(std::string_view key, const Box& box) -> bool = 0;
+    // A picture made of pixels (BGRA, 8 bits each, not premultiplied), drawn fitted into the box keeping its proportions.
+    // Kept by `key` after the first draw: draw a changed picture under a new key.
+    virtual void Pixels(std::string_view key, int width, int height, const std::vector<std::uint8_t>& bgra, const Box& box) = 0;
     // Drawing is cut to the box until PopClip (nested clips intersect).
     virtual void PushClip(const Box& box) = 0;
     virtual void PopClip() = 0;

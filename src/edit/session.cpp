@@ -616,4 +616,25 @@ auto Session::SoundFiles() const -> std::vector<std::string> {
 
 auto Session::SoundPath(const std::string& file) const -> std::string { return U(P(basePath_).parent_path() / "sounds" / P(file)); }
 
+auto Session::IconNames() const -> std::vector<std::string> {
+    std::vector<std::string> out;
+    std::error_code ec;
+    const fs::path folder = P(basePath_).parent_path() / "icons";
+    if (!fs::is_directory(folder, ec)) return out;
+    for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec)) {
+        if (!entry.is_regular_file(ec)) continue;
+        const std::string name = U(entry.path().filename());
+        if (name.size() > 7 && name.ends_with(".sprite") && !name.ends_with(".lowend.sprite")) out.push_back(name.substr(0, name.size() - 7));
+    }
+    std::sort(out.begin(), out.end(), [](const std::string& a, const std::string& b) {
+        std::string x = a, y = b;
+        for (char& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for (char& c : y) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return x < y;
+    });
+    return out;
+}
+
+auto Session::IconPath(const std::string& name) const -> std::string { return U(P(basePath_).parent_path() / "icons" / P(name + ".sprite")); }
+
 }  // namespace esrfe::edit
