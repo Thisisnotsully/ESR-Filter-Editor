@@ -259,6 +259,24 @@ auto TestMagic(const GameData& d) -> void {
     const auto both = d.MagicStatsFor(std::vector<std::string>{"rin", "amu"});
     const StatRange* fcr2 = Has(both, d, "item_fastercastrate");
     CHECK(fcr2 != nullptr && fcr2->bases.size() == 2);
+
+    // Rare: only affixes with rare = 1, so each stat also rolls on a magic one, never higher.
+    const auto rareRing = d.RareStatsFor("rin");
+    CHECK(!rareRing.empty() && Has(rareRing, d, "item_fastercastrate") != nullptr);
+    for (const char* code : {"rin", "jew"}) {
+        const auto magic = d.MagicStatsFor(code);
+        const auto rare = d.RareStatsFor(code);
+        bool narrower = rare.size() < magic.size();
+        for (const StatRange& r : rare) {
+            const StatRange* m = nullptr;
+            for (const StatRange& x : magic)
+                if (x.stat == r.stat && x.param == r.param) m = &x;
+            CHECK(m != nullptr && r.max <= m->max);
+            if (m != nullptr && r.max < m->max) narrower = true;
+        }
+        if (std::string(code) == "jew") CHECK(narrower);  // the best jewel affixes (Exarch's, of Carnage...) are magic only
+    }
+    CHECK(d.RareStatsFor("r51").empty());
 }
 
 auto TestGroups(const GameData& d) -> void {

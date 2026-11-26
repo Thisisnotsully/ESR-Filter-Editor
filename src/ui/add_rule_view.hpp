@@ -3,7 +3,7 @@
 //   2 What kind of item: white and superior bases, magic, rare, unique (Ancient Coupons with them), set, other
 //   3 Which ones: groups and their items for bases; the unique items themselves by tier; set items by set
 //   4 Tier: Normal / Exceptional / Elite, Mythicals, white or superior (bases, magic and rare items only)
-//   5 Bonuses: superior bases (Superior only) and magic items, the bonuses they can roll
+//   5 Bonuses: superior bases (Superior only), magic and rare items, the bonuses they can roll
 //   6 Filter levels (not for Always Show)
 //   7 Look (Show and Always Show): border, background, name colour, light beam, drop sound (with a preview at the
 //     game's volume), chat line; a picture of the label on the ground

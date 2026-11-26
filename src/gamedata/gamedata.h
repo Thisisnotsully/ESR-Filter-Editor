@@ -78,6 +78,9 @@ struct GameData {
 
     // Automagic (the base's "auto prefix" group).
     auto AutoMagicStatsFor(std::string_view baseCode) const -> std::vector<StatRange>;
+    // As MagicStatsFor, from the affixes a rare item can have (rare = 1).
+    auto RareStatsFor(std::string_view baseCode) const -> std::vector<StatRange>;
+    auto RareStatsFor(const std::vector<std::string>& baseCodes) const -> std::vector<StatRange>;
 
     // Superior bonuses from qualityitems.txt.
     auto SuperiorStatsFor(std::string_view baseCode) const -> std::vector<StatRange>;
@@ -95,7 +98,7 @@ struct GameData {
     auto ParamChoices(int stat, Language lang) const -> std::vector<ParamChoice>;
 
 private:
-    enum class Source { Magic, AutoMagic, Superior };
+    enum class Source { Magic, Rare, AutoMagic, Superior };
     auto Collect(Source source, const std::vector<std::string>& codes) const -> std::vector<StatRange>;
     auto Text(std::string_view key, Language lang) const -> const std::string&;
     auto StatLineUntrimmed(int stat, int value, int param, Language lang) const -> std::string;

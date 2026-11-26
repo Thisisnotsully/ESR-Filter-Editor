@@ -475,7 +475,7 @@ auto AddRuleView::StepUsed(Step step) const -> bool {
     switch (step) {
         case Step::Items: return draft_.kind != ItemKind::None;
         case Step::Tier: return byBase && (offer_.tiers || offer_.qualities);
-        case Step::Bonuses: return draft_.kind == ItemKind::Base || draft_.kind == ItemKind::Magic;
+        case Step::Bonuses: return draft_.kind == ItemKind::Base || draft_.kind == ItemKind::Magic || draft_.kind == ItemKind::Rare;
         case Step::Levels: return draft_.action != DraftAction::AlwaysShow && !levelIds_.empty();
         case Step::Look: return draft_.action == DraftAction::Show || draft_.action == DraftAction::AlwaysShow;
         default: return true;

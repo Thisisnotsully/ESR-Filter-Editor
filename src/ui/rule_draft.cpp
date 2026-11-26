@@ -190,12 +190,13 @@ auto Offer(const RuleDraft& draft, const gamedata::GameData& game) -> DraftOffer
     const std::vector<std::string> chosen = ChosenBases(draft, game);
     const bool superior = draft.kind == ItemKind::Base && draft.baseQualities == std::set<int>{3};
     const bool magic = draft.kind == ItemKind::Magic;
-    offer.statsPossible = (superior || magic) && !chosen.empty();
+    const bool rare = draft.kind == ItemKind::Rare;
+    offer.statsPossible = (superior || magic || rare) && !chosen.empty();
     if (!offer.statsPossible) {
         if (draft.kind == ItemKind::Base) offer.statsWhy = "Stats are for superior bases: choose Superior only to filter by them.";
         return offer;
     }
-    const std::vector<gamedata::StatRange> ranges = superior ? game.SuperiorStatsFor(chosen) : game.MagicStatsFor(chosen);
+    const std::vector<gamedata::StatRange> ranges = superior ? game.SuperiorStatsFor(chosen) : rare ? game.RareStatsFor(chosen) : game.MagicStatsFor(chosen);
     for (const gamedata::StatRange& r : ranges) {
         if (!Pickable(game, r.stat, r.param) || r.max <= 0) continue;
         const gamedata::Stat* info = game.stats.At(r.stat);

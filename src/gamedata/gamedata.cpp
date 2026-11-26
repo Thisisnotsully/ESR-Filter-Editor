@@ -297,11 +297,12 @@ auto GameData::Collect(Source source, const std::vector<std::string>& codes) con
         }
         const std::string cls = ClassOfBase(types, *b);
         if (source == Source::AutoMagic && b->autoPrefix == 0) continue;
-        const auto& lists = source == Source::Magic ? std::vector<const std::vector<Affix>*>{&prefixes, &suffixes}
+        const auto& lists = source != Source::AutoMagic ? std::vector<const std::vector<Affix>*>{&prefixes, &suffixes}
                                                     : std::vector<const std::vector<Affix>*>{&automagic};
         for (const auto* list : lists) {
             for (const auto& a : *list) {
                 if (source == Source::AutoMagic && a.group != b->autoPrefix) continue;
+                if (source == Source::Rare && !a.rare) continue;
                 if (!AffixFits(types, *b, cls, a)) continue;
                 rolls.clear();
                 for (const auto& m : a.mods) properties.Expand(m.code, m.param, m.min, m.max, skills, rolls);
@@ -327,6 +328,12 @@ auto GameData::MagicStatsFor(std::string_view baseCode) const -> std::vector<Sta
 }
 auto GameData::MagicStatsFor(const std::vector<std::string>& codes) const -> std::vector<StatRange> {
     return Collect(Source::Magic, codes);
+}
+auto GameData::RareStatsFor(std::string_view baseCode) const -> std::vector<StatRange> {
+    return Collect(Source::Rare, {std::string(baseCode)});
+}
+auto GameData::RareStatsFor(const std::vector<std::string>& codes) const -> std::vector<StatRange> {
+    return Collect(Source::Rare, codes);
 }
 auto GameData::AutoMagicStatsFor(std::string_view baseCode) const -> std::vector<StatRange> {
     return Collect(Source::AutoMagic, {std::string(baseCode)});

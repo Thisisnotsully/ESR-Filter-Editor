@@ -174,9 +174,20 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
         CHECK(labels.insert(o.label).second);  // no two alike
     }
     CHECK(skills >= 1);
-    // Rare: no bonuses.
+    // Rare: the affixes a rare can have (identified rares, like magic ones).
     RuleDraft rare = FromItem("rin", 6, -1, {}, game);
-    CHECK(rare.kind == ItemKind::Rare && !Offer(rare, game).statsPossible);
+    const DraftOffer rareOffer = Offer(rare, game);
+    CHECK(rare.kind == ItemKind::Rare && rareOffer.statsPossible && !rareOffer.stats.empty());
+    CHECK(rareOffer.stats.size() <= Offer(FromItem("rin", 4, -1, {}, game), game).stats.size());
+    rare.stats.push_back(StatPick{rareOffer.stats.front().stat, rareOffer.stats.front().param, rareOffer.stats.front().max});
+    Tidy(rare, game);
+    CHECK(rare.stats.size() == 1);
+    {
+        const auto rules = ToRules(rare, game, "Rare ring");
+        CHECK(rules.size() == 1 && rules[0].rule.Find("itemStats") != nullptr);
+        RuleDraft back;
+        CHECK(FromRule(rules[0].rule, game, back) && back.kind == ItemKind::Rare && back.stats.size() == 1);
+    }
     // A unique, a set item, a coupon, a rune.
     const gamedata::Unique* someUnique = nullptr;
     for (const gamedata::Unique& u : game.uniques.All())
