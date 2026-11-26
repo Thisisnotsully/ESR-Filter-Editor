@@ -107,7 +107,8 @@ auto KindAllows(ItemKind kind, const gamedata::GameData& game, const gamedata::B
 // An ESR rune's colour, the colour its name is shown in ('0' white, '1' red, '9' yellow, '8' orange, '2' green,
 // '4' gold, ';' purple, 'N' turquoise): 0 for a classic rune (El to Zod, no colour) or anything not a rune.
 auto RuneColor(const gamedata::GameData& game, const std::string& code) -> char;
-// "White", "Red", ... for a RuneColor (English: the UI translates it where it is shown).
+// "White", "Red", ... for a RuneColor; "Elemental" for the turquoise runes, ESR's Elemental Runes (English: the UI
+// translates it where it is shown).
 auto RuneColorName(char color) -> std::string;
 
 // The tier a unique or set item has through its base (None for rings, amulets, charms, jewels).

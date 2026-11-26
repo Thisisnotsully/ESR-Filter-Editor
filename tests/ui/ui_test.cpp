@@ -301,7 +301,7 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
     CHECK(runeScopes.size() >= 3 && runeScopes[2].label == "Every classic rune (El to Zod)" && runeScopes[2].count == 33);
     CHECK(RuneColor(game, "r36") == '4' && RuneColor(game, "r50") == ';' && RuneColor(game, "r97") == 'N' && RuneColor(game, "r80") == 0);
     const std::vector<Scope> godRune = ScopesFor(FromItem("r97", 2, -1, {}, game), game, context);
-    CHECK(godRune.size() >= 2 && godRune[1].label == "Every turquoise rune" && godRune[1].count == 14);
+    CHECK(godRune.size() >= 2 && godRune[1].label == "Every Elemental Rune" && godRune[1].count == 14);
     CHECK(godRune.size() >= 2 && godRune[1].label.find("higher") == std::string::npos);  // no rank among these
     // Every scope makes a rule, read back the same.
     for (const auto* list : {&staff, &ring, &uniqueScopes, &setScopes, &couponScopes, &runeScopes})

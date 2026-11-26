@@ -222,7 +222,7 @@ Build and install with `build-and-install.bat` (it builds the loot filter from t
 ## 0.12: set item tiers, rune colours
 
 - [ ] Add a rule → Set items: the lists start with Normal tier, Exceptional tier, Elite tier, and Rings, amulets, charms, jewels; then **By set**, one list per set. Searching finds each item once.
-- [ ] Add a rule → Runes, gems and other: runes are listed by the colour of their names (Runes: White, Red, Yellow, Orange, Green, Gold, Purple, Turquoise) and **Runes: classic and others** (El to Zod). Hu is with the green runes, as the game shows it.
+- [ ] Add a rule → Runes, gems and other: runes are listed by the colour of their names (Runes: White, Red, Yellow, Orange, Green, Gold, Purple, Elemental) and **Runes: classic and others** (El to Zod). Hu is with the green runes, as the game shows it.
 - [ ] Edit-item key, a set item: Only it → the whole set → every set item of its tier → every set item.
-- [ ] Edit-item key, an ESR rune: Only it → it and every higher rune (for I to Wo) → every rune of its colour → every rune. A classic rune: … → every classic rune (El to Zod). An Ancient Coupon: … → every normal-tier (exceptional-tier, elite-tier) coupon → every coupon.
+- [ ] Edit-item key, an ESR rune: Only it → it and every higher rune (for I to Wo) → every rune of its colour (the turquoise ones: every Elemental Rune) → every rune. A classic rune: … → every classic rune (El to Zod). An Ancient Coupon: … → every normal-tier (exceptional-tier, elite-tier) coupon → every coupon.
 

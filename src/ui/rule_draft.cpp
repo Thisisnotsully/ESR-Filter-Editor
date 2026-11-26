@@ -151,7 +151,7 @@ auto RuneColorName(char color) -> std::string {
         case '9': return "Yellow";
         case ':': return "Dark green";
         case ';': return "Purple";
-        case 'N': return "Turquoise";
+        case 'N': return "Elemental";  // the turquoise runes (Moon to God): ESR calls them Elemental Runes
         default: return "Other";
     }
 }

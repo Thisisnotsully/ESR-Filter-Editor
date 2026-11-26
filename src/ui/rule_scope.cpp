@@ -300,7 +300,7 @@ private:
             for (const std::string& c : Allowed(sub->bases))
                 if (RuneColor(game_, c) == color) d.bases.push_back(c);
             const std::size_t n = d.bases.size();
-            Add(UiFormat("Every {0} rune", {Lowered(UiText(RuneColorName(color)))}), d, n);
+            Add(color == 'N' ? UiText("Every Elemental Rune") : UiFormat("Every {0} rune", {Lowered(UiText(RuneColorName(color)))}), d, n);
         } else if (sub != nullptr && RuneFamily(code) == 0) {  // the classic runes, El to Zod
             RuleDraft d = Empty();
             for (const std::string& c : Allowed(sub->bases))
