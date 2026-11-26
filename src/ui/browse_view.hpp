@@ -127,7 +127,7 @@ public:
     auto Rules() -> overlay::ListView& { return ruleList_; }
     auto Filters() -> overlay::Dropdown& { return filter_; }
     [[nodiscard]] auto FilterChoices() const -> const std::vector<edit::FilterChoice>& { return filters_; }
-    auto GameSettings() -> overlay::Button& { return gameSettings_; }
+    auto HelpButton() -> overlay::Button& { return help_; }
     auto AddRule() -> overlay::Button& { return addRule_; }
     auto Volume() -> overlay::Slider& { return volume_; }
     auto VolumeTest() -> overlay::Button& { return volumeTest_; }
@@ -177,7 +177,7 @@ private:
     int filterChosen_ = -1;    // the filter in use in the drop-down (the last entry opens the new-filter questions)
     std::string switching_;    // the filter asked for, until the loot filter has it
     std::string switchError_;  // the last switch failed: why
-    overlay::Button gameSettings_;
+    overlay::Button help_;  // the guide
     overlay::Button addRule_;
     DraftMaker pendingDraft_;  // the hover key's rule, waiting for the filter
     bool pendingRule_ = false;

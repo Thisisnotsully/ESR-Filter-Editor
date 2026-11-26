@@ -19,6 +19,7 @@
 #include "new_filter_view.hpp"
 #include "version_name_view.hpp"
 #include "quick_rule_view.hpp"
+#include "help_view.hpp"
 #include "rule_scope.h"
 #include "sprite.h"
 #include "rule_draft.h"
@@ -519,8 +520,25 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
     }
 
     // The game's own settings.
-    h.Click(h.view->GameSettings());
-    CHECK(h.source->settingsOpened == 1);
+    // Help: the guide, by topic.
+    h.platform.pushed.clear();
+    h.Click(h.view->HelpButton());
+    {
+        auto help = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<HelpView>(h.platform.pushed.back());
+        CHECK(help != nullptr && HelpTopics().size() >= 6);
+        if (help != nullptr) {
+            esrfe::overlay::Form hf{h.platform, help};
+            hf.Layout(h.client, h.content);
+            hf.Paint(h.platform.canvas);
+            CHECK(help->Topic() == 0 && help->Page().count == static_cast<int>(HelpTopics()[0].paragraphs.size()));
+            help->Topics().onClick(1, hf);
+            hf.Layout(h.client, h.content);
+            hf.Paint(h.platform.canvas);
+            CHECK(help->Topic() == 1 && std::string(HelpTopics()[1].title) == "The edit-item key");
+            CHECK(help->Page().rowHeight >= h.platform.canvas.LineHeight(esrfe::overlay::Font::Body));
+        }
+    }
+    CHECK(h.source->settingsOpened == 0);
 
     // ---- editing on a rule's card ----
     {

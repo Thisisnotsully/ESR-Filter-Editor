@@ -133,7 +133,7 @@ Build and install with `build-and-install.bat` (game closed). Then, in game, wit
 - [ ] The Level drop-down starts on the level the game uses, marked "(in use)". Rules for other levels are greyed out with "Not on this level". "Every level" shows them all normally.
 - [ ] Open a rule (double click, Enter or A). Its card lists every item, every condition and every effect. A renamed item shows its new name in the game's colours. Back returns to the list.
 - [ ] No key legend under the window.
-- [ ] **Game loot filter settings** closes the editor and opens the game's own screen (the log says "asked the game to open its loot filter screen", then "OpenLootFilter passed to the game"). Choose another level there, open the editor again: the level follows.
+- [ ] (Replaced in 0.11 by **Help**.) **Game loot filter settings** closed the editor and opened the game's own screen (the log says "asked the game to open its loot filter screen", then "OpenLootFilter passed to the game"). Choose another level there, open the editor again: the level follows.
 - [ ] Edit the filter file in a text editor while the game runs, save it, then open the editor again: it shows the change.
 - [ ] `lfeditor-demo` still opens the controls demo over the list.
 
@@ -213,4 +213,9 @@ Build and install with `build-and-install.bat` (it builds the loot filter from t
 - [ ] A line under it says how it meets the filter: "R010 never hides it now. Your rule comes first, so it hides them anyway." and the like.
 - [ ] **Hide them** / **Show them** / **Always show them** make the rule (your version is made first if you have none) and go back to the rules: it is there as yours. **Choose the style…** opens the steps on Style, filled in. **More options…** opens the steps on the items, filled in; ticking items there replaces a broad choice.
 - [ ] In game: "every superior elite-tier item in Weapons" hides superior elite weapons but not exceptional ones or armour; "every magic item" shows every magic item; "Ber and every higher rune" shows Jah but not Sur.
+
+## 0.11: Help
+
+- [ ] **Help** in the top bar (where **Game loot filter settings** was) opens a guide: Getting around, The edit-item key, Changing a rule, Adding a rule, Your own versions, A new filter, Good to know. Choose a topic on the left (mouse, arrows, D-pad); its page scrolls on the right. Back returns to the rules.
+- [ ] The game's own loot filter screen is no longer reachable from the editor. Its jobs: the filter is chosen in the editor's Filter list; the level with the loot filter's **Next Filter Level** key.
 

@@ -5,6 +5,7 @@
 #include <set>
 
 #include "add_rule_view.hpp"
+#include "help_view.hpp"
 #include "item_rules_view.hpp"
 #include "quick_rule_view.hpp"
 #include "new_filter_view.hpp"
@@ -151,8 +152,8 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
     filter_.translate = false;
     filter_.onChange = [this](int index, Ui& ui) { ChooseFilter(index, ui); };
 
-    gameSettings_.label = "Game loot filter settings";
-    gameSettings_.onClick = [this](Ui&) { source_->OpenGameSettings(); };
+    help_.label = "Help";
+    help_.onClick = [](Ui& ui) { ui.PushView(std::make_shared<HelpView>()); };
     addRule_.label = "+ Add a rule";
     addRule_.style = overlay::Button::Style::Primary;
     addRule_.onClick = [this](Ui& ui) { StartRule(ui, nullptr); };
@@ -697,12 +698,12 @@ void BrowseView::Layout(const LayoutContext& c) {
     const int barHeight = std::max(m.S(30), body + m.S(10));
 
     // The top bar: search, level, the game's settings.
-    const int settingsWidth = m.TextWidth(UiText(gameSettings_.label), Font::Body) + m.S(28);
-    gameSettings_.box = Box{area.right - settingsWidth, area.top, area.right, area.top + barHeight};
+    const int settingsWidth = m.TextWidth(UiText(help_.label), Font::Body) + m.S(40);
+    help_.box = Box{area.right - settingsWidth, area.top, area.right, area.top + barHeight};
     const int addWidth = m.TextWidth(UiText(addRule_.label), Font::Body) + m.S(28);
-    addRule_.box = Box{gameSettings_.box.left - gap - addWidth, area.top, gameSettings_.box.left - gap, area.top + barHeight};
+    addRule_.box = Box{help_.box.left - gap - addWidth, area.top, help_.box.left - gap, area.top + barHeight};
     addRule_.visible = !empty_ && loaded_ && loaded_->session != nullptr && loaded_->game != nullptr;
-    int right = (addRule_.visible ? addRule_.box.left : gameSettings_.box.left) - gap;
+    int right = (addRule_.visible ? addRule_.box.left : help_.box.left) - gap;
     if (filter_.visible) {
         int widest = m.S(160);
         for (const std::string& option : filter_.options) widest = std::max(widest, m.TextWidth(option, Font::Body) + m.S(40));
@@ -781,7 +782,7 @@ void BrowseView::Layout(const LayoutContext& c) {
 }
 
 void BrowseView::FocusList(std::vector<Widget*>& out) {
-    out = {&search_, &filterLabel_, &filter_, &addRule_, &gameSettings_, &info_, &volumeLabel_, &volume_, &volumeValue_, &volumeTest_,
+    out = {&search_, &filterLabel_, &filter_, &addRule_, &help_, &info_, &volumeLabel_, &volume_, &volumeValue_, &volumeTest_,
            &sectionList_, &count_, &ruleList_, &message_};
 }
 
@@ -899,6 +900,6 @@ auto BrowseView::Pad(const overlay::PadEvent& event, Ui& ui) -> bool {
     return false;
 }
 
-auto BrowseView::InitialFocus() -> Widget* { return empty_ ? static_cast<Widget*>(&gameSettings_) : &ruleList_; }
+auto BrowseView::InitialFocus() -> Widget* { return empty_ ? static_cast<Widget*>(&help_) : &ruleList_; }
 
 }  // namespace esrfe::ui
