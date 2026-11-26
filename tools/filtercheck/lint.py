@@ -2,7 +2,7 @@
 
     python3 lint.py <filter.json> <data dir>
 
-- Every rule title is "R### | what it does | action", and every R### is used once.
+- Every rule title is "R### | what it does", and every R### is used once.
   U### ids belong to players' own rules (added by the editor) and never appear
   in the base filter.
 - A list of item codes that holds Mythical bases holds all of them (or all the
@@ -58,9 +58,9 @@ def main():
         if re.match(r"^U\d+ \|", title):
             problems.append(f"rule {n}: {title[:5]} is a player rule id (U###); the base filter only uses R###")
             continue
-        m = re.match(r"^(R\d{3,}) \| .+ \| .+$", title)
+        m = re.match(r"^(R\d{3,}) \| .+$", title)
         if not m:
-            problems.append(f"rule {n}: title is not 'R### | what | action': {title[:80]!r}")
+            problems.append(f"rule {n}: title is not 'R### | what it does': {title[:80]!r}")
             continue
         rid = m.group(1)
         if int(rid[1:]) in RETIRED:

@@ -10,6 +10,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -277,6 +278,8 @@ auto main(int argc, char** argv) -> int {
             std::printf("%s %-44s L%d %s%s matched: %s| chat %zu\n", pass ? "PASS" : "FAIL", f[0].c_str(), level,
                         out.hidden ? "hidden by " : "shown", out.hidden ? RuleId(program, out.hiddenBy).c_str() : "", matched.c_str(),
                         out.chatMessages.size());
+            if (std::getenv("CHECK_NAMES") != nullptr && out.nameChanged)  // the label's name, for checking renames
+                std::printf("     name: %s\n", out.nameTemplate.c_str());
         }
     }
     return (ok && errors == 0 && failures == 0) ? 0 : 1;
