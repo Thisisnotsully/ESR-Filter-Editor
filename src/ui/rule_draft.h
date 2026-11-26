@@ -104,6 +104,12 @@ auto IsCoupon(const gamedata::GameData& game, const std::string& code) -> bool;
 // rare for those, runes / gems / potions / keys and the like for other.
 auto KindAllows(ItemKind kind, const gamedata::GameData& game, const gamedata::Base& base) -> bool;
 
+// An ESR rune's colour, the colour its name is shown in ('0' white, '1' red, '9' yellow, '8' orange, '2' green,
+// '4' gold, ';' purple, 'N' turquoise): 0 for a classic rune (El to Zod, no colour) or anything not a rune.
+auto RuneColor(const gamedata::GameData& game, const std::string& code) -> char;
+// "White", "Red", ... for a RuneColor (English: the UI translates it where it is shown).
+auto RuneColorName(char color) -> std::string;
+
 // The tier a unique or set item has through its base (None for rings, amulets, charms, jewels).
 auto TierOfUnique(const gamedata::GameData& game, const std::string& baseCode) -> gamedata::Tier;
 

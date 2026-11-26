@@ -219,3 +219,10 @@ Build and install with `build-and-install.bat` (it builds the loot filter from t
 - [ ] **Help** in the top bar (where **Game loot filter settings** was) opens a guide: Getting around, The edit-item key, Changing a rule, Adding a rule, Your own versions, A new filter, Good to know. Choose a topic on the left (mouse, arrows, D-pad); its page scrolls on the right. Back returns to the rules.
 - [ ] The game's own loot filter screen is no longer reachable from the editor. Its jobs: the filter is chosen in the editor's Filter list; the level with the loot filter's **Next Filter Level** key.
 
+## 0.12: set item tiers, rune colours
+
+- [ ] Add a rule → Set items: the lists start with Normal tier, Exceptional tier, Elite tier, and Rings, amulets, charms, jewels; then **By set**, one list per set. Searching finds each item once.
+- [ ] Add a rule → Runes, gems and other: runes are listed by the colour of their names (Runes: White, Red, Yellow, Orange, Green, Gold, Purple, Turquoise) and **Runes: classic and others** (El to Zod). Hu is with the green runes, as the game shows it.
+- [ ] Edit-item key, a set item: Only it → the whole set → every set item of its tier → every set item.
+- [ ] Edit-item key, an ESR rune: Only it → it and every higher rune (for I to Wo) → every rune of its colour → every rune. A classic rune: … → every classic rune (El to Zod). An Ancient Coupon: … → every normal-tier (exceptional-tier, elite-tier) coupon → every coupon.
+

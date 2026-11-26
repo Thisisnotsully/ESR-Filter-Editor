@@ -15,6 +15,12 @@ using overlay::UiText;
 
 namespace {
 
+// Lower-case first letter, for a word inside a sentence (English only: other languages keep theirs).
+auto Lowered(std::string text) -> std::string {
+    if (!text.empty() && text[0] >= 'A' && text[0] <= 'Z') text[0] = static_cast<char>(text[0] - 'A' + 'a');
+    return text;
+}
+
 auto TierWord(gamedata::Tier t) -> std::string {
     switch (t) {
         case gamedata::Tier::Normal: return UiText("normal");
@@ -236,7 +242,7 @@ private:
             for (const Coupon& c : ui::Coupons(game_))
                 if (c.tier == tier) d.coupons.push_back(c.code);
             const std::size_t n = d.coupons.size();
-            Add(UiFormat("Every {0} Ancient Coupon", {TierWord(tier)}), d, n);
+            Add(UiFormat("Every {0}-tier Ancient Coupon", {TierWord(tier)}), d, n);
         }
         RuleDraft all = Empty();
         for (const Coupon& c : ui::Coupons(game_)) all.coupons.push_back(c.code);
@@ -257,6 +263,14 @@ private:
                 if (const gamedata::SetItem* x = game_.sets.Item(row); x != nullptr && !x->disabled) d.setItems.push_back(row);
             const std::size_t n = d.setItems.size();
             Add(UiFormat("The whole {0} set", {gamedata::Strings::Plain(game_.sets.SetName(*set, game_.strings, context_.language))}), d, n);
+        }
+        {  // set items of the same tier, as uniques
+            const gamedata::Tier tier = TierOfUnique(game_, item->code);
+            RuleDraft d = Empty();
+            for (const gamedata::SetItem& x : game_.sets.Items())
+                if (!x.disabled && TierOfUnique(game_, x.code) == tier) d.setItems.push_back(x.row);
+            const std::size_t n = d.setItems.size();
+            Add(tier == gamedata::Tier::None ? UiText("Every set ring, amulet, charm and jewel") : UiFormat("Every {0}-tier set item", {TierWord(tier)}), d, n);
         }
         RuleDraft every = Empty();
         every.every = true;
@@ -280,6 +294,19 @@ private:
             }
             const std::size_t n = d.bases.size();
             if (n > 1) Add(UiFormat("{0} and every higher rune", {BaseName(code)}), d, n);
+        }
+        if (const char color = RuneColor(game_, code); sub != nullptr && color != 0) {  // ESR runes go by colour
+            RuleDraft d = Empty();
+            for (const std::string& c : Allowed(sub->bases))
+                if (RuneColor(game_, c) == color) d.bases.push_back(c);
+            const std::size_t n = d.bases.size();
+            Add(UiFormat("Every {0} rune", {Lowered(UiText(RuneColorName(color)))}), d, n);
+        } else if (sub != nullptr && RuneFamily(code) == 0) {  // the classic runes, El to Zod
+            RuleDraft d = Empty();
+            for (const std::string& c : Allowed(sub->bases))
+                if (RuneFamily(c) == 0) d.bases.push_back(c);
+            const std::size_t n = d.bases.size();
+            Add(UiText("Every classic rune (El to Zod)"), d, n);
         }
         if (sub != nullptr) {
             RuleDraft d = Empty();

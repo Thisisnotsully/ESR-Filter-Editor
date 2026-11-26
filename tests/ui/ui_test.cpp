@@ -284,7 +284,8 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
     CHECK(uniqueScopes.size() >= 3 && uniqueScopes.front().count == 1 && uniqueScopes.back().draft.every);
     const std::vector<Scope> setScopes = ScopesFor(set, game, context);
     print("a set item", setScopes);
-    CHECK(setScopes.size() == 3 && setScopes[1].label.rfind("The whole ", 0) == 0 && setScopes[1].count > 1);
+    CHECK(setScopes.size() == 4 && setScopes[1].label.rfind("The whole ", 0) == 0 && setScopes[1].count > 1);
+    CHECK(setScopes.size() == 4 && setScopes[2].label.find("-tier set item") != std::string::npos && setScopes[2].count > setScopes[1].count);
     const std::vector<Scope> couponScopes = ScopesFor(FromItem("01c", 2, -1, {}, game), game, context);
     print("an Ancient Coupon", couponScopes);
     CHECK(couponScopes.size() >= 2 && couponScopes.back().label == "Every Ancient Coupon" && couponScopes.back().count > 300);
@@ -295,7 +296,12 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
     const std::vector<Scope> esrRune = ScopesFor(FromItem("r30", 2, -1, {}, game), game, context);
     print("an ESR rune", esrRune);
     CHECK(esrRune.size() >= 2 && esrRune[1].draft.bases.front() == "r30" && esrRune[1].draft.bases.back() == "r46" && esrRune[1].count == 17);
+    CHECK(esrRune.size() >= 3 && esrRune[2].label == "Every green rune" && esrRune[2].count == 8);  // Hu (r48) is shown green
+    CHECK(esrRune.size() >= 3 && std::find(esrRune[2].draft.bases.begin(), esrRune[2].draft.bases.end(), "r48") != esrRune[2].draft.bases.end());
+    CHECK(runeScopes.size() >= 3 && runeScopes[2].label == "Every classic rune (El to Zod)" && runeScopes[2].count == 33);
+    CHECK(RuneColor(game, "r36") == '4' && RuneColor(game, "r50") == ';' && RuneColor(game, "r97") == 'N' && RuneColor(game, "r80") == 0);
     const std::vector<Scope> godRune = ScopesFor(FromItem("r97", 2, -1, {}, game), game, context);
+    CHECK(godRune.size() >= 2 && godRune[1].label == "Every turquoise rune" && godRune[1].count == 14);
     CHECK(godRune.size() >= 2 && godRune[1].label.find("higher") == std::string::npos);  // no rank among these
     // Every scope makes a rule, read back the same.
     for (const auto* list : {&staff, &ring, &uniqueScopes, &setScopes, &couponScopes, &runeScopes})
@@ -753,6 +759,36 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                 coupons = coupons || c.name == "Ancient Coupons: Normal";
             }
             CHECK(elite && coupons);
+            // Set items: by tier, then set by set; runes: by the colour of their names.
+            steps->GoTo(Step::Kind);
+            layout();
+            click(steps->KindChip(4));
+            CHECK(steps->Draft().kind == ItemKind::Set);
+            bool setElite = false, bySet = false;
+            for (const AddRuleView::Category& c : steps->Categories()) {
+                setElite = setElite || (c.name == "Elite tier" && !c.entries.empty());
+                bySet = bySet || (c.name == "By set" && c.heading);
+            }
+            CHECK(setElite && bySet);
+            steps->GoTo(Step::Kind);
+            layout();
+            click(steps->KindChip(5));
+            CHECK(steps->Draft().kind == ItemKind::Other);
+            std::size_t green = 0;
+            bool classic = false;
+            for (const AddRuleView::Category& c : steps->Categories()) {
+                if (c.name == "Runes: Green") green = c.entries.size();
+                classic = classic || c.name == "Runes: classic and others";
+            }
+            CHECK(green == 8 && classic);
+            f.Focus(&steps->ItemSearch());
+            for (char16_t ch : esrfe::overlay::Utf8ToUtf16("Ber Rune")) f.Char(ch);
+            layout();
+            CHECK(steps->Entries().size() == 1);  // found once
+            steps->GoTo(Step::Kind);
+            layout();
+            click(steps->KindChip(3));
+            steps->ItemSearch().SetValue("");
             CHECK(!steps->StepUsed(Step::Tier) && !steps->StepUsed(Step::Bonuses));
             f.Paint(h.platform.canvas);
             // White and superior bases: the staff, superior only, a bonus.

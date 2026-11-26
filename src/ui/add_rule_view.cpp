@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <initializer_list>
 #include <map>
+#include <set>
 
 #include "groups.h"
 #include "text_fold.hpp"
@@ -521,7 +522,25 @@ void AddRuleView::RebuildCategories() {
                         e.tag = b->mythical ? UiText("Mythical") : UiText(TierWord(b->tier));
                         c.entries.push_back(std::move(e));
                     }
-                    if (!c.entries.empty()) subs.push_back(std::move(c));
+                    if (c.entries.empty()) continue;
+                    // Runes: ESR's by the colour of their names, the classic ones (El to Zod) together.
+                    if (std::any_of(c.entries.begin(), c.entries.end(), [this](const Entry& e) { return RuneColor(game_, e.code) != 0; })) {
+                        std::vector<char> order;
+                        std::map<char, Category> byColor;
+                        for (Entry& e : c.entries) {
+                            const char color = RuneColor(game_, e.code);
+                            if (byColor.count(color) == 0) order.push_back(color);
+                            byColor[color].entries.push_back(std::move(e));
+                        }
+                        for (char color : order) {
+                            Category part = std::move(byColor[color]);
+                            part.name = color == 0 ? UiFormat("{0}: classic and others", {c.name})
+                                                   : UiFormat("{0}: {1}", {c.name, UiText(RuneColorName(color))});
+                            subs.push_back(std::move(part));
+                        }
+                        continue;
+                    }
+                    subs.push_back(std::move(c));
                 }
                 if (subs.empty()) continue;
                 const std::string name = gamedata::Groups::Name(group, game_.strings, loaded_->language);
@@ -572,6 +591,26 @@ void AddRuleView::RebuildCategories() {
             break;
         }
         case ItemKind::Set: {
+            // By tier first, as uniques, then set by set.
+            std::map<int, Category> byTier;  // 1-3 normal..elite, 0 no tier
+            const char* tierNames[] = {"Rings, amulets, charms, jewels and others", "Normal tier", "Exceptional tier", "Elite tier"};
+            for (const gamedata::SetItem& item : game_.sets.Items()) {
+                if (item.disabled) continue;
+                Entry e;
+                e.type = Entry::Type::SetItem;
+                e.row = item.row;
+                e.name = gamedata::Strings::Plain(game_.sets.Name(item, game_.strings, loaded_->language));
+                if (e.name.empty()) continue;
+                e.tag = baseName(item.code);
+                byTier[static_cast<int>(TierOfUnique(game_, item.code))].entries.push_back(std::move(e));
+            }
+            for (int t : {1, 2, 3, 0}) {
+                Category c = std::move(byTier[t]);
+                c.name = UiText(tierNames[t]);
+                std::sort(c.entries.begin(), c.entries.end(), [](const Entry& a, const Entry& b) { return a.name < b.name; });
+                if (!c.entries.empty()) categories_.push_back(std::move(c));
+            }
+            std::vector<Category> sets;
             for (const gamedata::Set& set : game_.sets.All()) {
                 Category c;
                 c.name = gamedata::Strings::Plain(game_.sets.SetName(set, game_.strings, loaded_->language));
@@ -585,9 +624,11 @@ void AddRuleView::RebuildCategories() {
                     e.tag = baseName(item->code);
                     c.entries.push_back(std::move(e));
                 }
-                if (!c.entries.empty()) categories_.push_back(std::move(c));
+                if (!c.entries.empty()) sets.push_back(std::move(c));
             }
-            std::sort(categories_.begin(), categories_.end(), [](const Category& a, const Category& b) { return a.name < b.name; });
+            std::sort(sets.begin(), sets.end(), [](const Category& a, const Category& b) { return a.name < b.name; });
+            categories_.push_back(Category{UiText("By set"), true, {}});
+            for (Category& c : sets) categories_.push_back(std::move(c));
             break;
         }
         case ItemKind::None: break;
@@ -603,9 +644,16 @@ void AddRuleView::RebuildEntries() {
     const std::string query = itemSearch_.Value();
     if (!query.empty()) {
         const overlay::text::ParsedQuery parsed = overlay::text::ParseQuery(query);
+        std::set<std::string> seen;  // an item can be in two lists (a set item: its tier and its set)
         for (const Category& c : categories_)
-            for (const Entry& e : c.entries)
-                if (overlay::text::Matches(parsed, overlay::text::SearchTextUtf8(e.name + "\n" + e.tag + "\n" + e.code))) entries_.push_back(e);
+            for (const Entry& e : c.entries) {
+                const std::string key = std::to_string(static_cast<int>(e.type)) + ":" + e.code + ":" + std::to_string(e.row);
+                if (seen.count(key) != 0) continue;
+                if (overlay::text::Matches(parsed, overlay::text::SearchTextUtf8(e.name + "\n" + e.tag + "\n" + e.code))) {
+                    entries_.push_back(e);
+                    seen.insert(key);
+                }
+            }
     } else {
         const int row = categoryList_.Selected();
         if (row >= 0 && row < static_cast<int>(categories_.size())) {

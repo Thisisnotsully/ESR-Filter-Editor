@@ -131,6 +131,31 @@ auto KindAllows(ItemKind kind, const gamedata::GameData& game, const gamedata::B
     }
 }
 
+auto RuneColor(const gamedata::GameData& game, const std::string& code) -> char {
+    const gamedata::Base* b = game.bases.Find(code);
+    if (b == nullptr || b->type != "rune" || (!code.empty() && code[0] == 'x')) return 0;  // x..: crystals
+    const std::string& name = game.strings.Text(b->nameKey, gamedata::Language::enUS);  // as the game shows it
+    const std::size_t at = name.find("\xC3\xBF" "c");
+    return at != std::string::npos && at + 3 < name.size() ? name[at + 3] : 0;
+}
+
+auto RuneColorName(char color) -> std::string {
+    switch (color) {
+        case '0': return "White";
+        case '1': return "Red";
+        case '2': return "Green";
+        case '3': return "Blue";
+        case '4': return "Gold";
+        case '5': return "Grey";
+        case '8': return "Orange";
+        case '9': return "Yellow";
+        case ':': return "Dark green";
+        case ';': return "Purple";
+        case 'N': return "Turquoise";
+        default: return "Other";
+    }
+}
+
 auto TierOfUnique(const gamedata::GameData& game, const std::string& baseCode) -> Tier {
     const gamedata::Base* b = game.bases.Find(baseCode);
     return b == nullptr ? Tier::None : TierOf(*b);
