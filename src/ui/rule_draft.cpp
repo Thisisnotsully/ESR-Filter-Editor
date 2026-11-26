@@ -205,6 +205,16 @@ void Tidy(RuleDraft& draft, const gamedata::GameData& game) {
                                          }),
                           draft.bases.end());
     }
+    if (!byBase) draft.types.clear();
+    // Every item: only where the quality alone says what it is (white items include runes and gems).
+    if (draft.kind == ItemKind::Base || draft.kind == ItemKind::Other || draft.kind == ItemKind::None) draft.every = false;
+    if (draft.every) {
+        draft.bases.clear();
+        draft.types.clear();
+        draft.uniques.clear();
+        draft.coupons.clear();
+        draft.setItems.clear();
+    }
     if (draft.kind != ItemKind::Unique) {
         draft.uniques.clear();
         draft.coupons.clear();
@@ -216,8 +226,9 @@ void Tidy(RuleDraft& draft, const gamedata::GameData& game) {
     if (draft.action == DraftAction::Hide) draft.look = Look{};
 
     const DraftOffer offer = Offer(draft, game);
-    for (auto it = draft.tiers.begin(); it != draft.tiers.end();)
-        it = offer.tierChoices.count(*it) ? std::next(it) : draft.tiers.erase(it);
+    if (draft.types.empty())  // by item type, the tier is not limited to the bases chosen
+        for (auto it = draft.tiers.begin(); it != draft.tiers.end();)
+            it = offer.tierChoices.count(*it) ? std::next(it) : draft.tiers.erase(it);
     if (!offer.mythicals) draft.mythical = RuleDraft::Mythicals::Include;
     const DraftOffer after = Offer(draft, game);
     std::vector<StatPick> kept;
@@ -233,7 +244,7 @@ void Tidy(RuleDraft& draft, const gamedata::GameData& game) {
 }
 
 auto PickCount(const RuleDraft& draft) -> std::size_t {
-    return draft.bases.size() + draft.uniques.size() + draft.coupons.size() + draft.setItems.size();
+    return draft.bases.size() + draft.types.size() + (draft.every ? 1 : 0) + draft.uniques.size() + draft.coupons.size() + draft.setItems.size();
 }
 
 auto Complete(const RuleDraft& draft) -> bool {
@@ -332,7 +343,8 @@ auto ToRules(const RuleDraft& draft, const gamedata::GameData& game, const std::
                 if (draft.mythical == RuleDraft::Mythicals::Only && (b == nullptr || !b->mythical)) continue;
                 codes.push_back(code);
             }
-            rule.Set("itemCodes", StringList(codes));
+            if (!draft.types.empty()) rule.Set("itemTypes", StringList(draft.types));
+            else if (!draft.every) rule.Set("itemCodes", StringList(codes));
             if (draft.mythical == RuleDraft::Mythicals::Leave) {
                 std::vector<std::string> leave;
                 for (const std::string& code : codes) {
@@ -362,6 +374,13 @@ auto ToRules(const RuleDraft& draft, const gamedata::GameData& game, const std::
             break;
         }
         case ItemKind::Unique: {
+            if (draft.every) {  // every unique: the quality alone
+                Value rule = start("");
+                rule.Set("quality", Value::String("unique"));
+                PutCommon(rule, draft, game);
+                out.push_back(Finish(std::move(rule), draft));
+                break;
+            }
             if (!draft.uniques.empty()) {
                 Value rule = start("");
                 rule.Set("quality", Value::String("unique"));
@@ -380,7 +399,7 @@ auto ToRules(const RuleDraft& draft, const gamedata::GameData& game, const std::
         case ItemKind::Set: {
             Value rule = start("");
             rule.Set("quality", Value::String("set"));
-            rule.Set("uniqueOrSetIds", IntList(draft.setItems));
+            if (!draft.every) rule.Set("uniqueOrSetIds", IntList(draft.setItems));
             PutCommon(rule, draft, game);
             out.push_back(Finish(std::move(rule), draft));
             break;
@@ -470,8 +489,10 @@ auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out)
     } else if (!codes.empty() && std::all_of(codes.begin(), codes.end(), [&game](const std::string& c) { return IsCoupon(game, c); })) {
         out.kind = ItemKind::Unique;
         out.coupons = codes;
-    } else if (!codes.empty()) {
+    } else if (!codes.empty() || rule.Find("itemTypes") != nullptr || has("magic") || has("rare")) {
         out.bases = codes;
+        out.types = names(rule.Find("itemTypes"));
+        out.every = codes.empty() && out.types.empty();  // magic or rare with nothing else: every one
         if (has("magic")) {
             out.kind = ItemKind::Magic;
         } else if (has("rare")) {
@@ -484,6 +505,13 @@ auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out)
         } else {
             out.kind = ItemKind::Other;
         }
+        if (out.every && out.kind != ItemKind::Magic && out.kind != ItemKind::Rare) return false;
+    } else if (has("unique")) {
+        out.kind = ItemKind::Unique;
+        out.every = true;
+    } else if (has("set")) {
+        out.kind = ItemKind::Set;
+        out.every = true;
     } else {
         return false;
     }

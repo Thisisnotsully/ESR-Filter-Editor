@@ -204,3 +204,13 @@ Build and install with `build-and-install.bat` (it builds the loot filter from t
 - [ ] The key works while the inventory, stash or a vendor is open (if it does nothing there, say so: the editor's key may not reach it while a panel is open).
 - [ ] Ground items work as before.
 
+## 0.10: the edit-item key asks what you want (test build)
+
+- [ ] Point at an item (ground, inventory, stash, cube, equipped, vendor) and press the edit-item key. **This item** opens: its name, what the filter does with it now ("Shown.", "Shown: R010 never hides it.", "Hidden by R121."), and **The rules that match it (N)** (the old list, each rule opening its card).
+- [ ] **What do you want to do?** A shown item offers Hide / Change the style / Always show; a hidden one Stop hiding / Always show / Change the style, and **Or turn off R…** (turns off the rule hiding it, in your version).
+- [ ] **Which items?** From the narrowest to the broadest, with how many items each is: a superior base with its stats → that base → its group (Staves) → that tier in Weapons → every white and superior weapon; a magic or rare item → its base → its group (Rings) → Rings & Amulets → every magic item; a unique → only it → every unique on that base → its group → its tier → every unique; a set item → only it → the whole set → every set item; an Ancient Coupon → it → its tier → every coupon; a rune → it → it and every higher rune of its family (Ber: Ber, Jah, Cham, Zod; none for the special runes) → every rune.
+- [ ] **On which strictness levels?** This level only / This level and stricter ones (the start for Hide) / Every level (the start for showing and a style). Always show has no levels.
+- [ ] A line under it says how it meets the filter: "R010 never hides it now. Your rule comes first, so it hides them anyway." and the like.
+- [ ] **Hide them** / **Show them** / **Always show them** make the rule (your version is made first if you have none) and go back to the rules: it is there as yours. **Choose the style…** opens the steps on Style, filled in. **More options…** opens the steps on the items, filled in; ticking items there replaces a broad choice.
+- [ ] In game: "every superior elite-tier item in Weapons" hides superior elite weapons but not exceptional ones or armour; "every magic item" shows every magic item; "Ber and every higher rune" shows Jah but not Sur.
+

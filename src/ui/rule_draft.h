@@ -76,6 +76,8 @@ struct RuleDraft {
     DraftAction action = DraftAction::None;
     ItemKind kind = ItemKind::None;
     std::vector<std::string> bases;      // Base, Magic, Rare, Other: base codes
+    std::vector<std::string> types;      // ... or item types (itemTypes: "weap", "armo"), in place of bases
+    bool every = false;                  // ... or every item of the kind (Magic, Rare, Unique, Set: the quality alone)
     std::set<gamedata::Tier> tiers;      // empty: every tier
     enum class Mythicals { Include, Leave, Only } mythical = Mythicals::Include;
     std::set<int> baseQualities;         // Base: 2 white, 3 superior; empty: both

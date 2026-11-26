@@ -108,6 +108,7 @@ public:
     void RemoveOwn(const std::string& id);
     void SetOwnOff(const std::string& id, bool off);
     [[nodiscard]] auto Own(const std::string& id) const -> const OwnRule*;
+    [[nodiscard]] auto OwnRules() const -> const std::vector<OwnRule>& { return changes_.own; }
 
     // A top-level setting the player set (nullptr: the author's applies).
     [[nodiscard]] auto PlayerSetting(const std::string& key) const -> const Value*;

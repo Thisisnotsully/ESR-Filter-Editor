@@ -107,8 +107,9 @@ public:
     // Opens the add-rule steps; from the hover key with the item's draft, made once the mod's data is in. Waits for
     // the filter when it is not read yet.
     using DraftMaker = std::function<RuleDraft(const gamedata::GameData&)>;
-    // A new rule (the steps), or with `item` (the edit-item key on an item rules matched) what the filter does with it
-    // first. Waits for the filter when it is not read yet.
+    // A new rule (the steps), or with `item` (the edit-item key) the item's own screen: what the filter does with it,
+    // what the player wants (hide it, a style, always show it), for which items and levels. Waits for the filter
+    // when it is not read yet.
     void StartRule(Ui& ui, DraftMaker makeDraft, ItemRules item = {});
 
     // For tests.

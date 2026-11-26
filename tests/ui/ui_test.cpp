@@ -18,6 +18,8 @@
 #include "item_rules_view.hpp"
 #include "new_filter_view.hpp"
 #include "version_name_view.hpp"
+#include "quick_rule_view.hpp"
+#include "rule_scope.h"
 #include "sprite.h"
 #include "rule_draft.h"
 #include "rule_text.h"
@@ -260,6 +262,53 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
     CHECK(axesRule.rule.Find("excludeItemCodes") != nullptr && axesRule.rule.Find("excludeItemCodes")->array.size() == 1);
     CHECK(!Complete(RuleDraft{}) && Complete(axes));
 
+    // "Which items?" for the edit-item key: narrowest first, out to every item of the kind.
+    DescribeContext context;
+    context.game = &game;
+    const auto print = [](const char* what, const std::vector<Scope>& scopes) {
+        if (std::getenv("ESRFE_SHOW_SCOPES") == nullptr) return;
+        std::printf("  %s:\n", what);
+        for (const Scope& s : scopes) std::printf("    %s (%zu)\n", s.label.c_str(), s.count);
+    };
+    const std::vector<Scope> staff = ScopesFor(FromItem("1ls", 3, -1, {{allSkills, 0, 1}}, game), game, context);
+    print("superior Mystic Staff +1 all skills", staff);
+    CHECK(staff.size() == 5 && staff[0].draft.stats.size() == 1 && staff[1].draft.stats.empty() && staff[1].count == 1);
+    CHECK(staff[3].draft.types == (std::vector<std::string>{"weap", "misl"}) && staff[3].draft.tiers == std::set<gamedata::Tier>{gamedata::Tier::Elite});
+    CHECK(staff[4].draft.baseQualities.empty() && staff[4].draft.tiers.empty());
+    const std::vector<Scope> ring = ScopesFor(FromItem("rin", 4, -1, {}, game), game, context);
+    print("magic ring", ring);
+    CHECK(!ring.empty() && ring.back().draft.every && ring.back().label == "Every magic item");
+    const std::vector<Scope> uniqueScopes = ScopesFor(unique, game, context);
+    print("a unique", uniqueScopes);
+    CHECK(uniqueScopes.size() >= 3 && uniqueScopes.front().count == 1 && uniqueScopes.back().draft.every);
+    const std::vector<Scope> setScopes = ScopesFor(set, game, context);
+    print("a set item", setScopes);
+    CHECK(setScopes.size() == 3 && setScopes[1].label.rfind("The whole ", 0) == 0 && setScopes[1].count > 1);
+    const std::vector<Scope> couponScopes = ScopesFor(FromItem("01c", 2, -1, {}, game), game, context);
+    print("an Ancient Coupon", couponScopes);
+    CHECK(couponScopes.size() >= 2 && couponScopes.back().label == "Every Ancient Coupon" && couponScopes.back().count > 300);
+    const std::vector<Scope> runeScopes = ScopesFor(FromItem("r80", 2, -1, {}, game), game, context);
+    print("Ber rune", runeScopes);
+    CHECK(runeScopes.size() >= 3 && runeScopes[1].label == "Ber Rune and every higher rune");
+    CHECK(runeScopes.size() >= 2 && runeScopes[1].draft.bases == (std::vector<std::string>{"r80", "r81", "r82", "r83"}));  // Ber Jah Cham Zod
+    const std::vector<Scope> esrRune = ScopesFor(FromItem("r30", 2, -1, {}, game), game, context);
+    print("an ESR rune", esrRune);
+    CHECK(esrRune.size() >= 2 && esrRune[1].draft.bases.front() == "r30" && esrRune[1].draft.bases.back() == "r46" && esrRune[1].count == 17);
+    const std::vector<Scope> godRune = ScopesFor(FromItem("r97", 2, -1, {}, game), game, context);
+    CHECK(godRune.size() >= 2 && godRune[1].label.find("higher") == std::string::npos);  // no rank among these
+    // Every scope makes a rule, read back the same.
+    for (const auto* list : {&staff, &ring, &uniqueScopes, &setScopes, &couponScopes, &runeScopes})
+        for (const Scope& sc : *list) {
+            RuleDraft d = sc.draft;
+            d.action = DraftAction::Hide;
+            Tidy(d, game);
+            CHECK(Complete(d));
+            const std::vector<edit::OwnRule> made = ToRules(d, game, sc.label);
+            CHECK(!made.empty());
+            RuleDraft back2;
+            CHECK(!made.empty() && FromRule(made.front().rule, game, back2) && back2.kind == d.kind && back2.every == d.every && back2.types == d.types);
+        }
+
     // The loot filter's own reader must take them: written for tools/filtercheck (tests/ui/draft-rules.txt).
     if (outPath != nullptr) {
         edit::ChangeSet changes;
@@ -272,6 +321,16 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
         add(hideRule, "U002");
         add(axesRule, "U003");
         add(setRule, "U004");
+        const auto scopeRule = [&game](const Scope& sc, DraftAction action) {
+            RuleDraft d = sc.draft;
+            d.action = action;
+            Tidy(d, game);
+            return ToRules(d, game, sc.label).front();
+        };
+        add(scopeRule(staff[3], DraftAction::Hide), "U005");                // superior elite weapons
+        add(scopeRule(ring.back(), DraftAction::AlwaysShow), "U006");      // every magic item
+        add(scopeRule(uniqueScopes.back(), DraftAction::AlwaysShow), "U007");  // every unique
+        add(scopeRule(runeScopes[1], DraftAction::AlwaysShow), "U008");    // Ber and higher
         std::FILE* f = std::fopen(outPath, "wb");
         if (f != nullptr) {
             const std::string text = Render(changes);
@@ -836,7 +895,8 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         auto fromHover = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
         CHECK(fromHover != nullptr && fromHover->Draft().bases == std::vector<std::string>{"xhl"} && fromHover->Draft().stats.size() == 1);
         CHECK(fromHover != nullptr && fromHover->CurrentStep() == AddRuleView::Step::Action && !fromHover->Finish().enabled);
-        // An item rules matched: what the filter does with it first, each rule opening its card, then a new rule.
+        // The edit-item key on a hidden item: its own screen. Show it (or turn off the rule hiding it), for which
+        // items, on which levels; the rules that match it are one button away.
         ItemRules item;
         item.name = "Kenji's Winged Arrows";
         item.hidden = true;
@@ -844,27 +904,63 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         item.matched = {{"R164", "R164 | Uniques from the aq*/cq* codes", 300}, {"R133", "", 200}, {"", "no id here", 12}};
         h.platform.pushed.clear();
         h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("aq2", 7, 85, {}, g); }, item);
-        auto about = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<ItemRulesView>(h.platform.pushed.back());
-        CHECK(about != nullptr);
-        if (about != nullptr) {
-            esrfe::overlay::Form af{h.platform, about};
-            af.Layout(h.client, h.content);
-            af.Paint(h.platform.canvas);
-            CHECK(about->Rows().size() == 3);
-            CHECK(about->Rows()[0].rule >= 0 && about->Rows()[0].head.rfind("R164", 0) == 0 && !about->Rows()[0].hides);
-            CHECK(about->Rows()[1].hides && about->Rows()[1].head.find("hides it") != std::string::npos);
-            CHECK(about->Rows()[2].rule < 0);  // no id: listed, not opened
-            CHECK(about->State().find("Hidden by R133") != std::string::npos);
+        auto quick = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<QuickRuleView>(h.platform.pushed.back());
+        CHECK(quick != nullptr);
+        if (quick != nullptr) {
+            esrfe::overlay::Form qf{h.platform, quick};
+            qf.Layout(h.client, h.content);
+            qf.Paint(h.platform.canvas);
+            using Want = QuickRuleView::Want;
+            using Where = QuickRuleView::Where;
+            CHECK(quick->State().find("Hidden by R133") != std::string::npos);
+            CHECK(quick->Wants() == (std::vector<Want>{Want::Show, Want::AlwaysShow, Want::Style}));
+            CHECK(quick->CurrentWant() == Want::Show && quick->CurrentWhere() == Where::Every);
+            CHECK(quick->TurnOff().visible);
+            CHECK(quick->Note().find("R133 hides it now") != std::string::npos);
+            CHECK(quick->Scopes().size() >= 3 && quick->Scopes()[0].label.rfind("Only ", 0) == 0 && quick->Scopes()[0].count == 1);
+            CHECK(quick->Scopes().back().label == "Every unique" && quick->Scopes().back().draft.every);
+            // The rules that match it.
             h.platform.pushed.clear();
-            about->OpenRow(2, af);
-            CHECK(h.platform.pushed.empty());
-            about->OpenRow(0, af);
-            auto rc = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<RuleView>(h.platform.pushed.back());
-            CHECK(rc != nullptr);
+            quick->SeeRules().onClick(qf);
+            auto about = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<ItemRulesView>(h.platform.pushed.back());
+            CHECK(about != nullptr);
+            if (about != nullptr) {
+                esrfe::overlay::Form af{h.platform, about};
+                af.Layout(h.client, h.content);
+                af.Paint(h.platform.canvas);
+                CHECK(about->Rows().size() == 3);
+                CHECK(about->Rows()[0].rule >= 0 && about->Rows()[0].head.rfind("R164", 0) == 0 && !about->Rows()[0].hides);
+                CHECK(about->Rows()[1].hides && about->Rows()[1].head.find("hides it") != std::string::npos);
+                CHECK(about->Rows()[2].rule < 0);  // no id: listed, not opened
+                h.platform.pushed.clear();
+                about->OpenRow(2, af);
+                CHECK(h.platform.pushed.empty());
+                about->OpenRow(0, af);
+                CHECK(!h.platform.pushed.empty() && std::dynamic_pointer_cast<RuleView>(h.platform.pushed.back()) != nullptr);
+            }
+            // Show every unique in its group, on every level: one rule, shown (never hidden).
+            quick->ChooseScope(2);
+            RuleDraft d = quick->Draft();
+            CHECK(d.action == DraftAction::AlwaysShow && d.kind == ItemKind::Unique && d.uniques.size() == quick->Scopes()[2].count);
+            // This level and stricter ones: a show rule with those levels.
+            quick->ChooseWhere(Where::ThisAndStricter);
+            d = quick->Draft();
+            CHECK(d.action == DraftAction::Show && !d.levels.empty() && d.levels.front() == h.source->info.level);
+            // The style: the steps open on Style, filled in.
+            quick->Choose(Want::Style);
+            CHECK(quick->Go().label == "Choose the style…");
             h.platform.pushed.clear();
-            about->AddButton().onClick(af);
-            auto add = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
-            CHECK(add != nullptr && add->Draft().kind == ItemKind::Unique && add->Draft().uniques == std::vector<int>{85});
+            quick->Go().onClick(qf);
+            auto styleSteps = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
+            CHECK(styleSteps != nullptr && styleSteps->CurrentStep() == AddRuleView::Step::Look &&
+                  styleSteps->Draft().uniques.size() == quick->Scopes()[2].count && styleSteps->Draft().action == DraftAction::AlwaysShow);
+            // More options: the steps on the items, filled in.
+            quick->Choose(Want::AlwaysShow);
+            quick->ChooseScope(0);
+            h.platform.pushed.clear();
+            quick->More().onClick(qf);
+            auto more = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
+            CHECK(more != nullptr && more->CurrentStep() == AddRuleView::Step::Items && more->Draft().action == DraftAction::AlwaysShow);
         }
         // A carried item: where it is, and what the filter would do if it dropped here.
         {
@@ -872,13 +968,42 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             carried.location = 1;
             h.platform.pushed.clear();
             h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("aq2", 7, 85, {}, g); }, carried);
-            auto inv = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<ItemRulesView>(h.platform.pushed.back());
+            auto inv = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<QuickRuleView>(h.platform.pushed.back());
             CHECK(inv != nullptr && inv->State().rfind("In your inventory, stash or cube.  If it dropped here: Hidden by R133.", 0) == 0);
         }
-        // No rule matched: straight to the steps.
-        h.platform.pushed.clear();
-        h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("cap", 2, -1, {}, g); }, ItemRules{"Cap"});
-        CHECK(!h.platform.pushed.empty() && std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back()) != nullptr);
+        // A shown magic charm: hide it, for every magic charm, on this level and stricter ones. Saved as the player's rule.
+        {
+            ItemRules charm;
+            charm.name = "Grand Charm";
+            h.platform.pushed.clear();
+            h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("cm3", 4, -1, {}, g); }, charm);
+            auto q = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<QuickRuleView>(h.platform.pushed.back());
+            CHECK(q != nullptr);
+            if (q != nullptr) {
+                esrfe::overlay::Form qf{h.platform, q};
+                qf.Layout(h.client, h.content);
+                qf.Paint(h.platform.canvas);
+                CHECK(q->State() == "Shown." && q->Wants().front() == QuickRuleView::Want::Hide);
+                CHECK(q->CurrentWhere() == QuickRuleView::Where::ThisAndStricter && !q->TurnOff().visible);
+                int charms = -1;
+                for (int i = 0; i < static_cast<int>(q->Scopes().size()); ++i)
+                    if (q->Scopes()[static_cast<std::size_t>(i)].label.rfind("Every magic item in", 0) == 0 && charms < 0) charms = i;
+                CHECK(charms >= 1 && q->Scopes()[0].label == "Every magic Grand Charm");
+                q->ChooseScope(charms);
+                CHECK(q->Go().label == "Hide them" && q->Go().enabled);
+                const std::size_t before = data->session->OwnRules().size();
+                const int pops = h.platform.pops;
+                q->Go().onClick(qf);
+                CHECK(h.platform.pops == pops + 1);
+                CHECK(data->session->OwnRules().size() == before + 1);
+                if (data->session->OwnRules().size() == before + 1) {
+                    const edit::OwnRule& r = data->session->OwnRules().back();
+                    CHECK(r.place == "top" && r.rule.Find("hide") != nullptr && r.rule.Find("quality")->Str() == "magic");
+                    CHECK(r.rule.Find("activeInLevels") != nullptr && r.rule.Find("itemCodes") != nullptr);
+                    CHECK(r.rule.Find("comment")->Str().find("Every magic item in") != std::string::npos);
+                }
+            }
+        }
     }
 
     // ---- the filter's volume: saved in the player's version, heard at the loot filter's volume ----

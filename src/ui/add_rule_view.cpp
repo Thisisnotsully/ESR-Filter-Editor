@@ -637,6 +637,8 @@ void AddRuleView::ToggleEntry(int row, Ui& ui) {
         if (it != list.end()) list.erase(it);
         else list.push_back(value);
     };
+    draft_.every = false;  // ticking items replaces "every ..." or an item type
+    draft_.types.clear();
     switch (e.type) {
         case Entry::Type::Base: flip(draft_.bases, e.code); break;
         case Entry::Type::Coupon: flip(draft_.coupons, e.code); break;
@@ -744,6 +746,10 @@ void AddRuleView::SyncControls() {
 
     if (PickCount(draft_) == 0) {
         chosen_.text = UiText("Nothing chosen yet.");
+    } else if (draft_.every || !draft_.types.empty()) {  // from the edit-item key: a whole kind or item type
+        std::string what = overlay::StripColorCodes(summaryNow_.what);
+        for (const std::string& c : summaryNow_.conditions) what += ", " + c;
+        chosen_.text = UiFormat("Chosen: {0}. Tick items here to choose them instead.", {what});
     } else {
         std::vector<std::string> names;
         for (const Category& c : categories_)

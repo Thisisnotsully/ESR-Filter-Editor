@@ -6,6 +6,7 @@
 
 #include "add_rule_view.hpp"
 #include "item_rules_view.hpp"
+#include "quick_rule_view.hpp"
 #include "new_filter_view.hpp"
 #include "version_name_view.hpp"
 #include "rule_draft.h"
@@ -634,8 +635,8 @@ void BrowseView::StartRule(Ui& ui, DraftMaker makeDraft, ItemRules item) {
     pendingRule_ = false;
     pendingDraft_ = nullptr;
     pendingItem_ = ItemRules{};
-    if (!item.matched.empty()) {
-        ui.PushView(std::make_shared<ItemRulesView>(loaded_, std::move(item), std::move(makeDraft)));
+    if (!item.name.empty() && makeDraft) {  // the edit-item key: what the player wants with this item
+        ui.PushView(std::make_shared<QuickRuleView>(loaded_, std::move(item), std::move(makeDraft)));
         return;
     }
     RuleDraft draft = makeDraft ? makeDraft(*loaded_->game) : RuleDraft{};

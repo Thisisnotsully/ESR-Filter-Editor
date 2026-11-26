@@ -15,3 +15,16 @@ Magic axe (L4)                                | axe | 4 | 0 | 4 | - | shown matc
 Magic 7wd (L4, not a Mythical)                | 7wd | 4 | 2 | 4 | - | shown match:U003
 Magic Mythical axe m01 (left out)             | m01 | 4 | 2 | 4 | - | nomatch:U003
 Normal axe (not magic)                        | axe | 2 | 0 | 4 | - | nomatch:U003
+#   U005 Hide superior elite weapons (by item type: itemTypes weap/misl, baseTier elite)
+#   U006 Always show every magic item (the quality alone)
+#   U007 Always show every unique (the quality alone)
+#   U008 Always show Ber Rune and every higher rune
+Superior elite Mystic Staff                   | 1ls | 3 | 2 | 4 | -                | hidden match:U005
+Superior exceptional Rune Staff (not elite)   | 8ws | 3 | 1 | 4 | -                | nomatch:U005
+White elite Mystic Staff (not superior)       | 1ls | 2 | 2 | 4 | -                | nomatch:U005
+Superior elite armor (not a weapon)           | uar | 3 | 2 | 4 | -                | nomatch:U005
+Magic cap                                     | cap | 4 | 0 | 4 | -                | shown match:U006
+Rare cap (not magic)                          | cap | 6 | 0 | 4 | -                | nomatch:U006
+Unique cap                                    | cap | 7 | 0 | 4 | -                | shown match:U007
+Jah Rune                                      | r81 | 2 | 0 | 4 | -                | shown match:U008
+Sur Rune (below Ber)                          | r79 | 2 | 0 | 4 | -                | nomatch:U008
