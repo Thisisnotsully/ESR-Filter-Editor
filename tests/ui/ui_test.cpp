@@ -826,6 +826,31 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             steps->ItemSearch().SetValue("");
             steps->GoTo(Step::Kind);
             layout();
+            // Uniques: filters by item type above the lists.
+            click(steps->KindChip(3));
+            steps->GoTo(AddRuleView::Step::Items);
+            layout();
+            CHECK(steps->TypeChip(0).visible && steps->TypeChip(0).selected);
+            std::size_t allCount = 0;
+            for (const AddRuleView::Category& c : steps->Categories()) allCount += c.entries.size();
+            const auto filtered = [&](const char* label) {
+                for (std::size_t i = 0; i < AddRuleView::TypeFilters().size(); ++i)
+                    if (std::string(AddRuleView::TypeFilters()[i].label) == label) click(steps->TypeChip(i));
+                std::size_t n = 0;
+                for (const AddRuleView::Category& c : steps->Categories()) n += c.entries.size();
+                return n;
+            };
+            const std::size_t boots = filtered("Boots");
+            CHECK(boots > 0 && boots < allCount);
+            for (const AddRuleView::Category& c : steps->Categories())
+                for (const AddRuleView::Entry& e : c.entries) CHECK(e.type == AddRuleView::Entry::Type::Unique && game->types.IsA(game->bases.Find(e.base)->type, "boot"));
+            const std::size_t weapons = filtered("Weapons"), couponCount = filtered("Ancient Coupons"), other = filtered("Other");
+            std::size_t sum = couponCount + other;
+            for (const char* l : {"Weapons", "Body armor", "Helms", "Shields", "Gloves", "Boots", "Belts", "Rings and amulets", "Charms", "Jewels"}) sum += filtered(l);
+            CHECK(weapons > boots && couponCount > 0 && sum == allCount);  // every unique and coupon in exactly one filter
+            filtered("All");
+            steps->GoTo(Step::Kind);
+            layout();
             click(steps->KindChip(1));  // magic: rings and amulets
             {
                 bool myth = false, unused = false;

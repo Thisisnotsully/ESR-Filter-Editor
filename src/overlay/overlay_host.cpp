@@ -901,6 +901,9 @@ void OverlayHost::Hide() {
         ReleaseCapture();
     }
     if (wasOpen && !forms.empty()) Top().Hidden();
+    // Opened again, the editor starts at its first page.
+    if (wasOpen)
+        while (forms.size() > 1) forms.pop_back();
     ShowBlocker(false);
     ShowWindow(window, SW_HIDE);
     PadSync();
@@ -1531,7 +1534,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         bool handled = false;
         Guard("key", [&] { handled = self->forms.back()->KeyDown(event); });
         self->ApplyDeferred();
-        if (!handled && event.key == Key::Escape && !event.repeat) self->GoBack();
+        // Escape with nothing of its own to close (a dialog, a list, the keyboard): the editor closes (the pad's B goes back).
+        if (!handled && event.key == Key::Escape && !event.repeat) self->Hide();
         self->AfterInput();
         return 0;
     }

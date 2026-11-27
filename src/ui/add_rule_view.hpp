@@ -49,12 +49,22 @@ public:
         int row = -1;      // Unique, SetItem
         std::string name;
         std::string tag;   // a tier, or the base a unique or set item is on
+        std::string base;  // Unique, SetItem: the base's code (for the item type filters)
     };
     struct Category {
         std::string name;
         bool heading = false;  // a group's name above its subgroups (no list of its own)
         std::vector<Entry> entries;
     };
+
+    // Uniques and set items: the item type filter above the lists (0: all).
+    struct TypeFilter {
+        const char* label;
+        std::vector<const char*> types;  // the item type and its kinds; empty: none of the others ("Other"), or coupons
+        bool coupons = false;
+    };
+    static auto TypeFilters() -> const std::vector<TypeFilter>&;
+    auto TypeChip(std::size_t i) -> overlay::Chip& { return typeChips_[i]; }
 
     // For tests.
     [[nodiscard]] auto Draft() const -> const RuleDraft& { return draft_; }
@@ -115,6 +125,9 @@ private:
     const gamedata::GameData& game_;
     RuleDraft draft_;
     std::string editing_;
+    std::deque<overlay::Chip> typeChips_;
+    std::size_t typeFilter_ = 0;
+    auto PassesTypeFilter(const Entry& e) const -> bool;
     std::string replaces_;
     Step step_ = Step::Action;
     DraftOffer offer_;

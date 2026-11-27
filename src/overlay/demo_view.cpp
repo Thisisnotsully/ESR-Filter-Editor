@@ -42,7 +42,7 @@ public:
     }
     void FocusList(std::vector<Widget*>& out) override { out = {&panel_, &text_, &back_}; }
     auto InitialFocus() -> Widget* override { return &back_; }
-    void HelpRows(const Widget*, std::vector<HelpRow>& out) const override { out.push_back({Glyph::B, "Esc", "Back to the list"}); }
+    void HelpRows(const Widget*, std::vector<HelpRow>& out) const override { out.push_back({Glyph::B, "", "Back to the list"}); }
 
 private:
     std::string row_;

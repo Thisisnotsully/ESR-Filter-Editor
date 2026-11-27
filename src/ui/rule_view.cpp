@@ -499,7 +499,7 @@ void RuleView::Paint(Canvas& canvas) {
 }
 
 void RuleView::HelpRows(const Widget*, std::vector<overlay::HelpRow>& out) const {
-    out.push_back({overlay::Glyph::B, "Esc", "Back to the rules"});
+    out.push_back({overlay::Glyph::B, "", "Back to the rules"});
 }
 
 }  // namespace esrfe::ui

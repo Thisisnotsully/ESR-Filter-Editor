@@ -691,14 +691,16 @@ static void FormHelpAndTooltips() {
     std::vector<HelpRow> rows;
     h.form.Focus(&v.List());
     h.form.CollectHelp(rows);
-    bool pick = false, open = false, back = false, ctrlF = false;
+    bool pick = false, open = false, back = false, ctrlF = false, padBack = false, escClose = false;
     for (const HelpRow& r : rows) {
         pick = pick || r.action == "Pick a row";
         open = open || (r.pad == Glyph::A && r.action == "Open");
-        back = back || (r.pad == Glyph::B && r.keys == "Esc");
+        padBack = padBack || (r.pad == Glyph::B && r.action == "Back");
+        escClose = escClose || (r.keys == "Esc" && r.action == "Close");
         ctrlF = ctrlF || r.keys == "Ctrl+F";
     }
-    CHECK(pick && open && back && ctrlF);
+    CHECK(pick && open && padBack && escClose && ctrlF);
+    (void)back;
     rows.clear();
     h.form.OpenKeyboard(v.Search());
     h.form.CollectHelp(rows);

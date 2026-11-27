@@ -125,6 +125,19 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
     style_.onClick = act(DraftAction::Style);
     for (overlay::Chip* c : {&hide_, &show_, &always_, &style_}) c->font = Font::Body;
 
+    // 3 Items: uniques and set items by item type.
+    for (std::size_t i = 0; i < TypeFilters().size(); ++i) {
+        overlay::Chip& chip = typeChips_.emplace_back();
+        chip.label = TypeFilters()[i].label;
+        chip.font = Font::Small;
+        chip.onClick = [this, i](Ui& ui) {
+            typeFilter_ = i;
+            RebuildCategories();
+            Changed();
+            ui.Repaint();
+        };
+    }
+
     // 2 Kind.
     for (const auto& [kind, name] : KindChoices()) {
         overlay::Chip& chip = kinds_.emplace_back();
@@ -134,6 +147,7 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
         chip.onClick = [this, k](Ui& ui) {
             if (draft_.kind != k) {
                 draft_.kind = k;
+                typeFilter_ = 0;
                 itemSearch_.SetValue("");
                 Changed();
                 GoTo(Step::Items);  // straight on to the items of that kind
@@ -602,6 +616,7 @@ void AddRuleView::RebuildCategories() {
                 e.name = gamedata::Strings::Plain(game_.uniques.Name(u, game_.strings, loaded_->language));
                 if (e.name.empty()) continue;
                 e.tag = baseName(u.code);
+                e.base = u.code;
                 byTier[static_cast<int>(TierOfUnique(game_, u.code))].entries.push_back(std::move(e));
             }
             for (int t : {1, 2, 3, 0}) {
@@ -639,6 +654,7 @@ void AddRuleView::RebuildCategories() {
                 e.name = gamedata::Strings::Plain(game_.sets.Name(item, game_.strings, loaded_->language));
                 if (e.name.empty()) continue;
                 e.tag = baseName(item.code);
+                e.base = item.code;
                 byTier[static_cast<int>(TierOfUnique(game_, item.code))].entries.push_back(std::move(e));
             }
             for (int t : {1, 2, 3, 0}) {
@@ -659,6 +675,7 @@ void AddRuleView::RebuildCategories() {
                     e.row = row;
                     e.name = gamedata::Strings::Plain(game_.sets.Name(*item, game_.strings, loaded_->language));
                     e.tag = baseName(item->code);
+                    e.base = item->code;
                     c.entries.push_back(std::move(e));
                 }
                 if (!c.entries.empty()) sets.push_back(std::move(c));
@@ -670,10 +687,40 @@ void AddRuleView::RebuildCategories() {
         }
         case ItemKind::None: break;
     }
+    if ((draft_.kind == ItemKind::Unique || draft_.kind == ItemKind::Set) && typeFilter_ > 0 && typeFilter_ < TypeFilters().size()) {
+        for (Category& c : categories_) std::erase_if(c.entries, [this](const Entry& e) { return !PassesTypeFilter(e); });
+        std::erase_if(categories_, [](const Category& c) { return !c.heading && c.entries.empty(); });
+        for (std::size_t i = categories_.size(); i-- > 0;)  // a heading with nothing under it
+            if (categories_[i].heading && (i + 1 == categories_.size() || categories_[i + 1].heading)) categories_.erase(categories_.begin() + static_cast<std::ptrdiff_t>(i));
+    }
     categoryList_.SetCount(static_cast<int>(categories_.size()));
     categoryList_.Select(categories_.empty() ? -1 : (categories_[0].heading && categories_.size() > 1 ? 1 : 0), nullptr);
     categoryList_.SetScroll(0);
     RebuildEntries();
+}
+
+auto AddRuleView::TypeFilters() -> const std::vector<TypeFilter>& {
+    static const std::vector<TypeFilter> filters{
+        {"All", {}},           {"Weapons", {"weap"}},  {"Body armor", {"tors"}}, {"Helms", {"helm"}},
+        {"Shields", {"shld"}}, {"Gloves", {"glov"}},   {"Boots", {"boot"}},      {"Belts", {"belt"}},
+        {"Rings and amulets", {"ring", "amul"}},       {"Charms", {"char"}},     {"Jewels", {"jewl"}},
+        {"Other", {}},         {"Ancient Coupons", {}, true}};
+    return filters;
+}
+
+auto AddRuleView::PassesTypeFilter(const Entry& e) const -> bool {
+    const TypeFilter& f = TypeFilters()[typeFilter_];
+    if (f.coupons) return e.type == Entry::Type::Coupon;
+    if (e.type == Entry::Type::Coupon) return false;
+    const gamedata::Base* b = game_.bases.Find(e.base);
+    if (b == nullptr) return f.types.empty();
+    const auto is = [&](const char* type) { return game_.types.IsA(b->type, type) || (!b->type2.empty() && game_.types.IsA(b->type2, type)); };
+    if (!f.types.empty()) return std::any_of(f.types.begin(), f.types.end(), is);
+    // Other: none of the named ones.
+    for (std::size_t i = 1; i < TypeFilters().size(); ++i)
+        for (const char* type : TypeFilters()[i].types)
+            if (is(type)) return false;
+    return true;
 }
 
 void AddRuleView::RebuildEntries() {
@@ -846,6 +893,7 @@ void AddRuleView::SyncControls() {
     hide_.selected = draft_.action == DraftAction::Hide;
     show_.selected = draft_.action == DraftAction::Show;
     always_.selected = draft_.action == DraftAction::AlwaysShow;
+    for (std::size_t i = 0; i < typeChips_.size(); ++i) typeChips_[i].selected = i == typeFilter_;
     style_.selected = draft_.action == DraftAction::Style;
     for (std::size_t i = 0; i < kinds_.size(); ++i) kinds_[i].selected = KindChoices()[i].first == draft_.kind;
 
@@ -923,6 +971,8 @@ void AddRuleView::ShowStep() {
     style_.visible = step_ == Step::Action && draft_.replacing;
     for (overlay::Chip& c : kinds_) c.visible = step_ == Step::Kind;
     on(Step::Items, {&itemSearch_, &categoryList_, &entryList_, &all_, &none_, &chosen_});
+    for (std::size_t i = 0; i < typeChips_.size(); ++i)
+        typeChips_[i].visible = step_ == Step::Items && (draft_.kind == ItemKind::Unique || (draft_.kind == ItemKind::Set && !TypeFilters()[i].coupons));
     const bool tier = step_ == Step::Tier;
     for (overlay::Checkbox& b : tiers_) b.visible = tier && offer_.tierChoices.size() > 0;
     qualityLabel_.visible = tier && offer_.qualities;
@@ -1057,7 +1107,23 @@ void AddRuleView::Layout(const LayoutContext& c) {
             break;
         }
         case Step::Items: {
-            itemSearch_.box = Box{body.left, body.top, body.right, body.top + std::max(m.S(30), m.LineHeight(Font::Body) + m.S(10))};
+            int top = body.top;
+            if (!typeChips_.empty() && typeChips_[0].visible) {  // a row (or two) of item type filters
+                const int chipH = m.LineHeight(Font::Small) + m.S(10);
+                int x = body.left;
+                for (overlay::Chip& chip : typeChips_) {
+                    if (!chip.visible) continue;
+                    const int w = m.TextWidth(UiText(chip.label), Font::Small) + m.S(20);
+                    if (x > body.left && x + w > body.right) {
+                        x = body.left;
+                        top += chipH + m.S(6);
+                    }
+                    chip.box = Box{x, top, x + w, top + chipH};
+                    x += w + m.S(6);
+                }
+                top += chipH + gap;
+            }
+            itemSearch_.box = Box{body.left, top, body.right, top + std::max(m.S(30), m.LineHeight(Font::Body) + m.S(10))};
             const int listTop = itemSearch_.box.bottom + gap;
             const int chosenH = m.LineHeight(Font::Small) * 2 + m.S(6);
             const int listBottom = body.bottom - chosenH - gap;
@@ -1182,6 +1248,7 @@ void AddRuleView::FocusList(std::vector<Widget*>& out) {
     for (overlay::Chip& c : stepChips_) out.push_back(&c);
     for (Widget* w : std::initializer_list<Widget*>{&heading_, &hint_, &hide_, &show_, &always_, &style_}) out.push_back(w);
     for (overlay::Chip& c : kinds_) out.push_back(&c);
+    for (overlay::Chip& c : typeChips_) out.push_back(&c);
     for (Widget* w : std::initializer_list<Widget*>{&itemSearch_, &categoryList_, &entryList_, &all_, &none_, &chosen_, &qualityLabel_, &white_, &superior_})
         out.push_back(w);
     for (overlay::Checkbox& b : tiers_) out.push_back(&b);

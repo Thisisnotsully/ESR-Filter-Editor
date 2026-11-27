@@ -516,7 +516,8 @@ void Form::CollectHelp(std::vector<HelpRow>& out) {
     view_->HelpRows(focus_, out);
     out.push_back({Glyph::DPad, "Tab / Arrows", "Highlight"});
     if (view_->SearchBox() != nullptr) out.push_back({Glyph::Y, "", "Search"});
-    out.push_back({Glyph::B, "Esc", "Back"});
+    out.push_back({Glyph::B, "", "Back"});
+    out.push_back({Glyph::None, "Esc", "Close"});
 }
 
 void Form::Shown() {
