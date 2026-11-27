@@ -25,7 +25,8 @@
 
 namespace esrfe::ui {
 
-enum class DraftAction { None, Hide, Show, AlwaysShow };
+// Style: only its look and name, neither shows nor hides (a filter rule being edited that does neither).
+enum class DraftAction { None, Hide, Show, AlwaysShow, Style };
 enum class ItemKind { None, Base, Magic, Rare, Unique, Set, Other };
 
 struct Rgb {
@@ -94,6 +95,11 @@ struct RuleDraft {
     std::vector<StatPick> stats;         // superior-only bases, or magic items
     std::vector<std::int64_t> levels;    // empty: every level (always show: always)
     Look look;
+    // Editing a rule of the filter (EditFromRule): the rule as it was, and what the steps made of it before any
+    // change. A part the player leaves alone keeps the rule's own text, even what the steps cannot show.
+    bool replacing = false;
+    document::Value original;
+    document::Value baseline;
 };
 
 auto KindChoices() -> const std::vector<std::pair<ItemKind, const char*>>&;
@@ -149,6 +155,15 @@ void Tidy(RuleDraft& draft, const gamedata::GameData& game);
 // hidden). The title is "<summary> | <action>"; the session puts the U### id in front.
 auto ToRules(const RuleDraft& draft, const gamedata::GameData& game, const std::string& summary) -> std::vector<edit::OwnRule>;
 auto FromRule(const document::Value& rule, const gamedata::GameData& game, RuleDraft& out) -> bool;
+
+// Any rule of the filter, for the steps: false when the steps cannot tell which items it is for. The copy it makes
+// (EditedRule) keeps every part of the rule the player did not change, word for word.
+auto EditFromRule(const document::Value& rule, const gamedata::GameData& game, RuleDraft& out) -> bool;
+// The copy: the rule's text where the player changed nothing, the steps' where they did. Its place is "" (after the
+// rule it replaces, set by the caller), never kept shown by a companion.
+auto EditedRule(const RuleDraft& draft, const gamedata::GameData& game, const std::string& summary) -> edit::OwnRule;
+// The parts of the rule the steps cannot show (kept as written unless changed): its keys.
+auto KeptParts(const RuleDraft& draft) -> std::vector<std::string>;
 
 struct ItemStat {
     int stat = -1;

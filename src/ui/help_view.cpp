@@ -38,6 +38,7 @@ auto HelpTopics() -> const std::vector<HelpTopic>& {
              "Rule is on: switch a rule off without deleting it.",
              "Change what it does (Hide, Always show or neither), its strictness levels, or take items out of it.",
              "Undo puts the author's version of the rule back.",
+             "Edit rule (top bar, or Edit this rule on its card) opens the rule in the add-rule steps. Saving switches the author's rule off and puts your edited copy in its place; whatever you do not change stays exactly as the author wrote it. Delete the copy to get the author's rule back.",
              "Your own rules (U001, U002, ...) can be changed again or deleted.",
          }},
         {"Adding a rule",

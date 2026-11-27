@@ -130,6 +130,7 @@ public:
     [[nodiscard]] auto FilterChoices() const -> const std::vector<edit::FilterChoice>& { return filters_; }
     auto HelpButton() -> overlay::Button& { return help_; }
     auto AddRule() -> overlay::Button& { return addRule_; }
+    auto EditRule() -> overlay::Button& { return editRule_; }
     auto Volume() -> overlay::Slider& { return volume_; }
     auto VolumeTest() -> overlay::Button& { return volumeTest_; }
     void ChooseSection(int row);  // a row of the left list, as showing
@@ -180,6 +181,7 @@ private:
     std::string switchError_;  // the last switch failed: why
     overlay::Button help_;  // the guide
     overlay::Button addRule_;
+    overlay::Button editRule_;  // the rule chosen in the list, in the rule steps
     DraftMaker pendingDraft_;  // the hover key's rule, waiting for the filter
     bool pendingRule_ = false;
     ItemRules pendingItem_;

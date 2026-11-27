@@ -444,6 +444,9 @@ void Session::ReplaceOwn(const std::string& id, OwnRule rule) {
 }
 
 void Session::RemoveOwn(const std::string& id) {
+    // An edited copy of an author's rule: the rule itself comes back.
+    for (const OwnRule& own : changes_.own)
+        if (own.id == id && !own.replaces.empty() && AuthorRule(own.replaces) != nullptr) SetOff(own.replaces, false);
     changes_.own.erase(std::remove_if(changes_.own.begin(), changes_.own.end(), [&](const OwnRule& o) { return o.id == id; }),
                        changes_.own.end());
     Rebuild();

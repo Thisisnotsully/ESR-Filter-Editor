@@ -9,11 +9,36 @@
 
 namespace esrfe::ui {
 
+
+
 using namespace overlay::text_flags;
 using document::Value;
 using overlay::Font;
 using overlay::UiFormat;
 using overlay::UiText;
+
+auto OpenRuleEditor(Ui& ui, const std::shared_ptr<Loaded>& loaded, const std::string& id) -> std::string {
+    if (!loaded || loaded->session == nullptr || loaded->game == nullptr) return UiText("The filter cannot be changed here.");
+    if (id.empty()) return UiText("This rule has no id (R### or U###), so it cannot be edited.");
+    const edit::Session& session = *loaded->session;
+    RuleDraft draft;
+    if (const edit::OwnRule* own = session.Own(id); own != nullptr) {
+        if (own->replaces.empty() && FromRule(own->rule, *loaded->game, draft)) {  // made with the steps
+            ui.PushView(std::make_shared<AddRuleView>(loaded, draft, id));
+            return {};
+        }
+        if (EditFromRule(own->rule, *loaded->game, draft)) {
+            ui.PushView(std::make_shared<AddRuleView>(loaded, draft, id, own->replaces));
+            return {};
+        }
+        return UiText("The steps cannot tell which items this rule is for, so they cannot edit it.");
+    }
+    if (session.AuthorRule(id) == nullptr) return UiText("This rule cannot be edited.");
+    if (!EditFromRule(session.Effective(id), *loaded->game, draft))
+        return UiText("The steps cannot tell which items this rule is for, so they cannot edit it. Its strictness levels, what it does and its items can still be changed here.");
+    ui.PushView(std::make_shared<AddRuleView>(loaded, draft, std::string{}, id));
+    return {};
+}
 
 namespace {
 
@@ -73,13 +98,10 @@ RuleView::RuleView(std::shared_ptr<Loaded> loaded, int rule) : loaded_(std::move
         if (own_) Commit(ui, [this, on](edit::Session& s) { s.SetOwnOff(id_, !on); });
         else Commit(ui, [this, on](edit::Session& s) { s.SetOff(id_, !on); });
     };
-    change_.label = "Change this rule";
+    change_.label = "Edit this rule";
     change_.onClick = [this](Ui& ui) {
-        RuleDraft draft;
-        if (const edit::OwnRule* own = loaded_->session->Own(id_); own != nullptr && FromRule(own->rule, *loaded_->game, draft)) {
-            ui.PushView(std::make_shared<AddRuleView>(loaded_, draft, id_));
-        } else {
-            status_.text = UiText("This rule was not made with the add-rule steps, so they cannot change it.");
+        if (const std::string why = OpenRuleEditor(ui, loaded_, id_); !why.empty()) {
+            status_.text = why;
             ui.Repaint();
         }
     };
@@ -231,7 +253,7 @@ void RuleView::Describe() {
 }
 
 void RuleView::SyncControls() {
-    change_.visible = own_;
+    change_.visible = own_ || editable_;
     delete_.visible = own_;
     if (own_) {
         for (Widget* w : std::initializer_list<Widget*>{&actionLabel_, &hide_, &show_, &neither_, &levelsLabel_, &itemsLabel_, &items_, &reset_, &note_})
@@ -450,6 +472,10 @@ void RuleView::Layout(const LayoutContext& c) {
     if (reset_.visible) {
         reset_.box = overlay::Box{left, bottom - buttonHeight, right, bottom};
         bottom = reset_.box.top - gap;
+    }
+    if (change_.visible) {
+        change_.box = overlay::Box{left, bottom - buttonHeight, right, bottom};
+        bottom = change_.box.top - gap;
     }
     if (!entries_.empty()) {
         itemsLabel_.box = overlay::Box{left, y, right, y + small};

@@ -157,6 +157,22 @@ BrowseView::BrowseView(std::shared_ptr<Source> source) : source_(std::move(sourc
     addRule_.label = "+ Add a rule";
     addRule_.style = overlay::Button::Style::Primary;
     addRule_.onClick = [this](Ui& ui) { StartRule(ui, nullptr); };
+    editRule_.label = "Edit rule";
+    editRule_.onClick = [this](Ui& ui) {
+        const int row = ruleList_.Selected();
+        if (!loaded_ || row < 0 || row >= static_cast<int>(shown_.size())) return;
+        const int rule = shown_[static_cast<std::size_t>(row)];
+        const std::string why = OpenRuleEditor(ui, loaded_, loaded_->doc.Rules()[static_cast<std::size_t>(rule)].id);
+        if (!why.empty()) {
+            overlay::DialogSpec spec;
+            spec.title = "This rule cannot be edited here";
+            spec.message = why;
+            spec.confirm = "OK";
+            spec.cancel.clear();
+            spec.confirmIsDefault = true;
+            ui.ShowDialog(spec, [](bool) {});
+        }
+    };
 
     // The filter's volume: saved in the player's version when the slider stops, heard at once.
     volumeLabel_.text = "Filter volume";
@@ -707,7 +723,11 @@ void BrowseView::Layout(const LayoutContext& c) {
     const int addWidth = m.TextWidth(UiText(addRule_.label), Font::Body) + m.S(28);
     addRule_.box = Box{help_.box.left - gap - addWidth, area.top, help_.box.left - gap, area.top + barHeight};
     addRule_.visible = !empty_ && loaded_ && loaded_->session != nullptr && loaded_->game != nullptr;
-    int right = (addRule_.visible ? addRule_.box.left : help_.box.left) - gap;
+    const int editWidth = m.TextWidth(UiText(editRule_.label), Font::Body) + m.S(28);
+    editRule_.box = Box{addRule_.box.left - gap - editWidth, area.top, addRule_.box.left - gap, area.top + barHeight};
+    editRule_.visible = addRule_.visible;
+    editRule_.enabled = ruleList_.Selected() >= 0 && ruleList_.Selected() < static_cast<int>(shown_.size());
+    int right = (editRule_.visible ? editRule_.box.left : addRule_.visible ? addRule_.box.left : help_.box.left) - gap;
     if (filter_.visible) {
         int widest = m.S(160);
         for (const std::string& option : filter_.options) widest = std::max(widest, m.TextWidth(option, Font::Body) + m.S(40));
@@ -786,7 +806,7 @@ void BrowseView::Layout(const LayoutContext& c) {
 }
 
 void BrowseView::FocusList(std::vector<Widget*>& out) {
-    out = {&search_, &filterLabel_, &filter_, &addRule_, &help_, &info_, &volumeLabel_, &volume_, &volumeValue_, &volumeTest_,
+    out = {&search_, &filterLabel_, &filter_, &editRule_, &addRule_, &help_, &info_, &volumeLabel_, &volume_, &volumeValue_, &volumeTest_,
            &sectionList_, &count_, &ruleList_, &message_};
 }
 

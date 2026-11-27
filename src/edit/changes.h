@@ -61,6 +61,7 @@ struct OwnRule {
     bool keepShown = false;
     std::string after;    // the rule it follows (an R### or U### id), "" for the start of its section
     std::string section;  // "Part > Section" or "Part" or "", where it goes when `after` is gone
+    std::string replaces; // the author's rule this edited copy stands in for (switched off while the copy is there)
     Value rule;           // the whole rule, its title "U### | ... | ..."
     bool off = false;     // switched off: left out of the game's copy
 };

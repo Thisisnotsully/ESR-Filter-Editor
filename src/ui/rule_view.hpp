@@ -14,6 +14,11 @@
 
 namespace esrfe::ui {
 
+// Opens the rule steps on a rule: the player's own as they made it, or a copy of the filter's rule that keeps every
+// part they do not change (saving switches the filter's rule off and puts the copy in its place). "" when the steps
+// opened, else why they cannot.
+auto OpenRuleEditor(Ui& ui, const std::shared_ptr<Loaded>& loaded, const std::string& id) -> std::string;
+
 class RuleView final : public overlay::View {
 public:
     RuleView(std::shared_ptr<Loaded> loaded, int rule);

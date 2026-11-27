@@ -274,7 +274,8 @@ auto PickCount(const RuleDraft& draft) -> std::size_t {
 }
 
 auto Complete(const RuleDraft& draft) -> bool {
-    return draft.action != DraftAction::None && draft.kind != ItemKind::None && PickCount(draft) > 0;
+    return draft.action != DraftAction::None && (draft.action != DraftAction::Style || draft.replacing) && draft.kind != ItemKind::None &&
+           PickCount(draft) > 0;
 }
 
 namespace {
@@ -320,6 +321,19 @@ void PutCommon(Value& rule, const RuleDraft& draft, const gamedata::GameData& ga
 
 auto Finish(Value rule, const RuleDraft& draft) -> edit::OwnRule {
     edit::OwnRule own;
+    if (draft.replacing) {  // in the place of a filter rule: one rule, as filter rules are written
+        if (draft.action == DraftAction::Hide) {
+            Value towns = Value::Array();
+            for (std::int64_t t : TownAreas()) towns.array.push_back(Value::Integer(t));
+            rule.Set("excludeAreas", std::move(towns));
+            rule.Set("hide", Value::Bool(true));
+        } else {
+            PutLook(rule, draft.look);
+            if (draft.action != DraftAction::Style) rule.Set("show", Value::Bool(true));
+        }
+        own.rule = std::move(rule);
+        return own;
+    }
     if (draft.action == DraftAction::Hide) {
         Value towns = Value::Array();
         for (std::int64_t t : TownAreas()) towns.array.push_back(Value::Integer(t));
@@ -354,10 +368,13 @@ auto IntList(const std::vector<int>& list) -> Value {
 
 auto ToRules(const RuleDraft& draft, const gamedata::GameData& game, const std::string& summary) -> std::vector<edit::OwnRule> {
     std::vector<edit::OwnRule> out;
-    const char* word = draft.action == DraftAction::Hide ? "hide" : draft.action == DraftAction::AlwaysShow ? "always show" : "show";
+    const char* word = draft.action == DraftAction::Hide         ? "hide"
+                       : draft.action == DraftAction::AlwaysShow ? "always show"
+                       : draft.action == DraftAction::Style      ? "style"
+                                                                 : "show";
     const auto start = [&](const std::string& extra) {
         Value rule = Value::Object();
-        rule.Set("comment", Value::String(summary + extra + " | " + word));
+        rule.Set("comment", Value::String(draft.replacing ? summary + extra : summary + extra + " | " + word));
         return rule;
     };
     switch (draft.kind) {
@@ -438,7 +455,15 @@ auto ToRules(const RuleDraft& draft, const gamedata::GameData& game, const std::
     return out;
 }
 
-auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out) -> bool {
+namespace {
+auto ReadRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out, bool looseAction) -> bool;
+}  // namespace
+
+auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out) -> bool { return ReadRule(rule, game, out, false); }
+
+namespace {
+
+auto ReadRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out, bool looseAction) -> bool {
     out = RuleDraft{};
     if (!rule.IsObject()) return false;
     const auto truthy = [&rule](const char* key) {
@@ -502,6 +527,7 @@ auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out)
     const bool hasLevels = rule.Find("activeInLevels") != nullptr;
     if (truthy("hide")) out.action = DraftAction::Hide;
     else if (truthy("show") || look.Any()) out.action = hasLevels ? DraftAction::Show : DraftAction::AlwaysShow;
+    else if (looseAction) out.action = DraftAction::Style;
     else return false;
 
     // The items.
@@ -570,6 +596,70 @@ auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out)
         }
     }
     return true;
+}
+
+// Equal, objects in any key order.
+auto SameValue(const Value* a, const Value* b) -> bool {
+    if (a == nullptr || b == nullptr) return a == b;
+    if (a->IsObject() && b->IsObject()) {
+        if (a->object.size() != b->object.size()) return false;
+        for (const document::Member& m : a->object)
+            if (!SameValue(&m.value, b->Find(m.key))) return false;
+        return true;
+    }
+    if (a->IsArray() && b->IsArray()) {
+        if (a->array.size() != b->array.size()) return false;
+        for (std::size_t i = 0; i < a->array.size(); ++i)
+            if (!SameValue(&a->array[i], &b->array[i])) return false;
+        return true;
+    }
+    return *a == *b;
+}
+
+}  // namespace
+
+auto EditFromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out) -> bool {
+    if (!ReadRule(rule, game, out, true)) return false;
+    out.replacing = true;
+    Tidy(out, game);
+    if (!Complete(out)) return false;
+    const std::vector<edit::OwnRule> again = ToRules(out, game, "");
+    if (again.size() != 1) return false;  // uniques and coupons together: two rules
+    out.original = rule;
+    out.baseline = again[0].rule;
+    return true;
+}
+
+auto EditedRule(const RuleDraft& draft, const gamedata::GameData& game, const std::string& summary) -> edit::OwnRule {
+    std::vector<edit::OwnRule> made = ToRules(draft, game, summary);
+    edit::OwnRule own = made.empty() ? edit::OwnRule{} : std::move(made[0]);
+    if (!draft.replacing || !draft.original.IsObject()) return own;
+    // Each part: the steps' text where the player changed it, else the rule's own (or nothing, as it had).
+    Value out = Value::Object();
+    out.Set("comment", own.rule.Find("comment") != nullptr ? *own.rule.Find("comment") : Value::String(summary));
+    std::vector<std::string> keys;
+    for (const document::Member& m : draft.original.object) keys.push_back(m.key);
+    for (const document::Member& m : own.rule.object)
+        if (std::find(keys.begin(), keys.end(), m.key) == keys.end()) keys.push_back(m.key);
+    for (const std::string& key : keys) {
+        if (key == "comment") continue;
+        const Value* now = own.rule.Find(key);
+        const Value* before = draft.baseline.Find(key);
+        const Value* text = SameValue(now, before) ? draft.original.Find(key) : now;
+        if (text != nullptr) out.Set(key, *text);
+    }
+    own.rule = std::move(out);
+    own.place.clear();
+    own.keepShown = false;
+    return own;
+}
+
+auto KeptParts(const RuleDraft& draft) -> std::vector<std::string> {
+    std::vector<std::string> out;
+    if (!draft.replacing || !draft.original.IsObject()) return out;
+    for (const document::Member& m : draft.original.object)
+        if (m.key != "comment" && !SameValue(&m.value, draft.baseline.Find(m.key))) out.push_back(m.key);
+    return out;
 }
 
 auto FromItem(const std::string& code, int quality, int uniqueOrSetId, const std::vector<ItemStat>& stats, const gamedata::GameData& game)

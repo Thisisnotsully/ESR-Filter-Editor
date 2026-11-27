@@ -29,7 +29,9 @@ public:
     enum class Step { Action, Kind, Items, Tier, Bonuses, Levels, Look, Check };
     static constexpr int kSteps = 8;
 
-    AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::string editingId);
+    // editingId: the player's own rule being changed; replaces: the filter rule an edited copy stands in for (the
+    // draft from EditFromRule; with editingId too when the copy itself is changed again).
+    AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::string editingId, std::string replaces = {});
     ~AddRuleView() override { *alive_ = false; }
 
     [[nodiscard]] auto Title() const -> std::string override;
@@ -75,6 +77,7 @@ public:
     [[nodiscard]] auto Offered() const -> const DraftOffer& { return offer_; }
     void ToggleStat(int row, Ui& ui);
     auto LevelBox(std::size_t i) -> overlay::Checkbox& { return levels_[i]; }
+    [[nodiscard]] auto LevelCount() const -> std::size_t { return levels_.size(); }
     auto BorderSwatch(std::size_t i) -> overlay::Swatch& { return borderSw_[i]; }
     auto BackgroundSwatch(std::size_t i) -> overlay::Swatch& { return backSw_[i]; }
     auto NameSwatch(std::size_t i) -> overlay::Swatch& { return nameSw_[i]; }
@@ -112,6 +115,7 @@ private:
     const gamedata::GameData& game_;
     RuleDraft draft_;
     std::string editing_;
+    std::string replaces_;
     Step step_ = Step::Action;
     DraftOffer offer_;
     ItemKind categoriesFor_ = ItemKind::None;
@@ -129,7 +133,7 @@ private:
 
     std::deque<overlay::Chip> stepChips_;
     overlay::Label heading_, hint_;
-    overlay::Chip hide_, show_, always_;
+    overlay::Chip hide_, show_, always_, style_;  // style_: only its look (a filter rule that does neither)
     std::deque<overlay::Chip> kinds_;
     overlay::TextBox itemSearch_;
     overlay::ListView categoryList_, entryList_;

@@ -990,6 +990,57 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             cf.KeyDown(enterKey);
             CHECK(data->session->Own("U001") == nullptr);
         }
+        // Edit a filter rule: the steps open on a copy; saving switches R095 off and puts the copy in its place.
+        {
+            h.view->Search().SetValue("");
+            h.form.Focus(&h.view->Search());
+            h.Type("R095");
+            CHECK(h.view->ShownRules().size() == 1);
+            h.form.Focus(&h.view->Rules());
+            h.view->Rules().Select(0, nullptr);
+            h.platform.pushed.clear();
+            h.Paint();
+            CHECK(h.view->EditRule().visible && h.view->EditRule().enabled);
+            h.view->EditRule().onClick(h.form);  // the top bar's Edit rule
+            auto steps = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<AddRuleView>(h.platform.pushed.back());
+            CHECK(steps != nullptr && steps->Draft().replacing && steps->Title() == "Edit R095");
+            CHECK(steps != nullptr && steps->Draft().action == DraftAction::Hide);
+            if (steps != nullptr) {
+                esrfe::overlay::Form sf{h.platform, steps};
+                sf.Layout(h.client, h.content);
+                steps->GoTo(AddRuleView::Step::Levels);
+                sf.Layout(h.client, h.content);
+                CHECK(steps->LevelCount() == 4);
+                steps->LevelBox(0).onChange(false, sf);  // not on level 1 any more
+                CHECK(steps->Finish().enabled);
+                steps->Finish().onClick(sf);
+                const edit::Session& s = *data->session;
+                CHECK(s.IsOff("R095"));
+                const edit::OwnRule* copy = nullptr;
+                for (const edit::OwnRule& o : s.Changes().own)
+                    if (o.replaces == "R095") copy = &o;
+                CHECK(copy != nullptr && copy->after == "R095" && copy->place.empty() && !copy->keepShown);
+                if (copy != nullptr) {
+                    const document::Value* author = s.AuthorRule("R095");
+                    CHECK(author != nullptr && copy->rule.Find("itemCodes") != nullptr && *copy->rule.Find("itemCodes") == *author->Find("itemCodes"));
+                    CHECK(copy->rule.Find("comment")->Str().find("Hides low-value items") != std::string::npos);
+                    const document::Value* levels = copy->rule.Find("activeInLevels");
+                    CHECK(levels != nullptr && levels->array.size() == 3);
+                    // The game's copy: the edited rule right where R095 was, R095 gone.
+                    std::string gameText;
+                    CHECK(edit::ReadText(s.MergedPath(), gameText));
+                    document::Document game;
+                    std::vector<document::Diag> diags;
+                    CHECK(document::Document::Parse(gameText, game, diags));
+                    const int at = game.FindRule(copy->id);
+                    CHECK(game.FindRule("R095") < 0 && at > 0 && game.Rules()[static_cast<std::size_t>(at - 1)].id == "R094");
+                    // Deleting the copy brings R095 back.
+                    const std::string id = copy->id;
+                    data->session->RemoveOwn(id);
+                    CHECK(!data->session->IsOff("R095") && data->session->Own(id) == nullptr);
+                }
+            }
+        }
         // The hover key: the item's rule, waiting for the filter when needed.
         h.platform.pushed.clear();
         h.view->StartRule(h.form, [](const gamedata::GameData& g) { return FromItem("xhl", 3, -1, {{g.stats.Id("extra_curse"), 0, 1}}, g); });
@@ -1403,6 +1454,25 @@ int main(int argc, char** argv) {
     std::map<std::string, RuleSummary> byId;
     std::map<Action, int> actions;
     int other = 0, rawCodes = 0;
+    // Editing a filter rule: left alone, the copy is the rule word for word (its title aside); nearly every rule opens.
+    {
+        int opened = 0;
+        for (const document::Rule& rule : doc.Rules()) {
+            RuleDraft d;
+            if (!EditFromRule(rule.value, game, d)) continue;
+            ++opened;
+            document::Value copy = EditedRule(d, game, "x").rule, original = rule.value;
+            copy.Erase("comment");
+            original.Erase("comment");
+            CHECK(copy.object.size() == original.object.size());
+            bool same = copy.object.size() == original.object.size();
+            for (const document::Member& m : original.object) same = same && copy.Find(m.key) != nullptr && *copy.Find(m.key) == m.value;
+            CHECK(same);
+            if (!same) std::printf("  not the same: %s\n", rule.id.c_str());
+        }
+        std::printf("rules the steps can edit: %d of %zu\n", opened, doc.Rules().size());
+        CHECK(opened * 10 >= static_cast<int>(doc.Rules().size()) * 9);
+    }
     for (const document::Rule& rule : doc.Rules()) {
         RuleSummary s = Describe(rule.value, context);
         ++actions[s.action];

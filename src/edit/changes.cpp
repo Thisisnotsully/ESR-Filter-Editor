@@ -167,6 +167,7 @@ auto Parse(std::string_view text, ChangeSet& out, std::string& error) -> bool {
             rule.id = Str(o.Find("id"));
             rule.after = Str(o.Find("after"));
             rule.section = Str(o.Find("section"));
+            rule.replaces = Str(o.Find("replaces"));
             rule.place = Str(o.Find("place"));
             if (const Value* keep = o.Find("keepShown")) rule.keepShown = keep->IsBool() && keep->boolean;
             if (const Value* off = o.Find("off")) rule.off = off->IsBool() && off->boolean;
@@ -234,6 +235,7 @@ auto Render(const ChangeSet& c) -> std::string {
         if (o.off) entry.Set("off", Value::Bool(true));
         entry.Set("after", Value::String(o.after));
         entry.Set("section", Value::String(o.section));
+        if (!o.replaces.empty()) entry.Set("replaces", Value::String(o.replaces));
         entry.Set("rule", o.rule);
         out += (i == 0 ? "\n    " : ",\n    ") + document::Render(entry);
     }

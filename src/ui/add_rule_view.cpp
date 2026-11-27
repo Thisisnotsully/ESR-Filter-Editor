@@ -44,6 +44,21 @@ auto ToOverlay(const Rgb& c) -> overlay::Rgb {
     return overlay::Rgb{static_cast<std::uint8_t>(c.r), static_cast<std::uint8_t>(c.g), static_cast<std::uint8_t>(c.b)};
 }
 
+// A rule part the steps do not show, in words.
+auto KeptPartName(const std::string& key) -> std::string {
+    static const std::map<std::string, const char*> names{
+        {"replaceName", "Its name (in every language)"}, {"namePrefix", "Text before the name"}, {"nameSuffix", "Text after the name"},
+        {"useStyle", "A shared style"}, {"chatMessage", "Its chat line"}, {"playerStats", "Character level or other character stats"},
+        {"formula", "A formula"}, {"excludeItemCodes", "Items left out"}, {"sockets", "Sockets"}, {"isEthereal", "Ethereal or not"},
+        {"location", "Where the item is"}, {"quality", "Qualities"}, {"baseTier", "Tiers"}, {"itemStats", "Stats"},
+        {"isIdentified", "Identified or not"}, {"labelBorder", "Border"}, {"labelBackground", "Background"}, {"droplight", "Light beam"},
+        {"sound", "Drop sound"}, {"icon", "Minimap icon"}, {"excludeAreas", "Areas left out"}, {"areas", "Areas"},
+        {"activeInLevels", "Strictness levels"}, {"itemCodes", "Items"}, {"itemTypes", "Item types"}, {"chronicle", "Chronicle"},
+        {"difficulty", "Difficulty"}, {"hideIfOtherConditionsFail", "Hide when its other conditions fail"}};
+    const auto it = names.find(key);
+    return it != names.end() ? UiText(it->second) + " (" + key + ")" : key;
+}
+
 auto TierWord(gamedata::Tier t) -> const char* {
     switch (t) {
         case gamedata::Tier::Normal: return "Normal";
@@ -76,8 +91,8 @@ void PaintTick(overlay::Canvas& canvas, const overlay::Box& row, bool on) {
 
 }  // namespace
 
-AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::string editingId)
-    : loaded_(std::move(loaded)), game_(*loaded_->game), draft_(std::move(draft)), editing_(std::move(editingId)) {
+AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::string editingId, std::string replaces)
+    : loaded_(std::move(loaded)), game_(*loaded_->game), draft_(std::move(draft)), editing_(std::move(editingId)), replaces_(std::move(replaces)) {
     for (int i = 0; i < kSteps; ++i) {
         overlay::Chip& chip = stepChips_.emplace_back();
         chip.label = kStepNames[i];
@@ -106,7 +121,9 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
     hide_.onClick = act(DraftAction::Hide);
     show_.onClick = act(DraftAction::Show);
     always_.onClick = act(DraftAction::AlwaysShow);
-    for (overlay::Chip* c : {&hide_, &show_, &always_}) c->font = Font::Body;
+    style_.label = "Neither: only its look";
+    style_.onClick = act(DraftAction::Style);
+    for (overlay::Chip* c : {&hide_, &show_, &always_, &style_}) c->font = Font::Body;
 
     // 2 Kind.
     for (const auto& [kind, name] : KindChoices()) {
@@ -440,7 +457,7 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
         if (i < kSteps) GoTo(static_cast<Step>(i));
         ui.Repaint();
     };
-    finish_.label = editing_.empty() ? "Add rule" : "Save rule";
+    finish_.label = editing_.empty() && replaces_.empty() ? "Add rule" : "Save rule";
     finish_.style = overlay::Button::Style::Primary;
     finish_.onClick = [this](Ui& ui) { Save(ui); };
 
@@ -464,10 +481,13 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
     GoTo(Step::Action);
 }
 
-auto AddRuleView::Title() const -> std::string { return editing_.empty() ? UiText("New rule") : UiFormat("Change your rule {0}", {editing_}); }
+auto AddRuleView::Title() const -> std::string {
+    if (!replaces_.empty()) return UiFormat("Edit {0}", {editing_.empty() ? replaces_ : editing_});
+    return editing_.empty() ? UiText("New rule") : UiFormat("Change your rule {0}", {editing_});
+}
 
 auto AddRuleView::ActionChip(DraftAction action) -> overlay::Chip& {
-    return action == DraftAction::Hide ? hide_ : action == DraftAction::Show ? show_ : always_;
+    return action == DraftAction::Hide ? hide_ : action == DraftAction::Show ? show_ : action == DraftAction::Style ? style_ : always_;
 }
 
 auto AddRuleView::StepUsed(Step step) const -> bool {
@@ -477,7 +497,7 @@ auto AddRuleView::StepUsed(Step step) const -> bool {
         case Step::Tier: return byBase && (offer_.tiers || offer_.qualities);
         case Step::Bonuses: return draft_.kind == ItemKind::Base || draft_.kind == ItemKind::Magic || draft_.kind == ItemKind::Rare;
         case Step::Levels: return draft_.action != DraftAction::AlwaysShow && !levelIds_.empty();
-        case Step::Look: return draft_.action == DraftAction::Show || draft_.action == DraftAction::AlwaysShow;
+        case Step::Look: return draft_.action == DraftAction::Show || draft_.action == DraftAction::AlwaysShow || draft_.action == DraftAction::Style;
         default: return true;
     }
 }
@@ -742,6 +762,12 @@ auto AddRuleView::RulesNow() const -> std::vector<edit::OwnRule> {
     std::string title = overlay::StripColorCodes(s.what);
     for (const std::string& c : s.conditions) title += ", " + c;
     if (title.size() > 120) title = title.substr(0, 117) + "...";
+    if (draft_.replacing) {  // the rule's own title stays, without its id
+        const document::Value* comment = draft_.original.Find("comment");
+        std::string own = comment != nullptr && comment->IsString() ? comment->Str() : std::string{};
+        if (const std::size_t bar = own.find(" | "); bar != std::string::npos && own.size() > 1 && (own[0] == 'R' || own[0] == 'U')) own = own.substr(bar + 3);
+        return {EditedRule(draft_, game_, own.empty() ? title : own)};
+    }
     return ToRules(draft_, game_, title);
 }
 
@@ -776,6 +802,7 @@ void AddRuleView::Changed() {
                 checkText_.push_back(UiText("Hides them on the ground outside towns (in town every item is shown)"));
                 break;
             case DraftAction::Show: checkText_.push_back(UiText("Shows them on the levels below: no rule can hide them there")); break;
+            case DraftAction::Style: checkText_.push_back(UiText("Changes only how they look: it neither shows nor hides them")); break;
             default: checkText_.push_back(UiText("Always shows them, on every level: no rule can hide them")); break;
         }
         for (const std::string& e : summaryNow_.effects) checkText_.push_back(overlay::StripColorCodes(e));
@@ -790,6 +817,16 @@ void AddRuleView::Changed() {
         if (summaryNow_.conditions.empty()) checkText_.push_back(UiText("Every time"));
         for (const std::string& c : summaryNow_.conditions) checkText_.push_back(c);
         if (rules.size() > 1) checkText_.push_back(UiText("(Saved as two rules: one for the uniques, one for the coupons.)"));
+        if (draft_.replacing) {
+            const std::vector<std::string> kept = KeptParts(draft_);
+            if (!kept.empty()) {
+                checkText_.push_back("#" + UiText("Kept as written"));
+                checkText_.push_back(UiText("The steps do not show these parts of the rule; they stay as they are unless you change that part:"));
+                for (const std::string& key : kept) checkText_.push_back(KeptPartName(key));
+            }
+            if (editing_.empty())
+                checkText_.push_back(UiFormat("Saving switches {0} off and puts your copy in its place. Deleting the copy brings {0} back.", {replaces_}));
+        }
     } else {
         checkText_.push_back(Summary());
     }
@@ -809,6 +846,7 @@ void AddRuleView::SyncControls() {
     hide_.selected = draft_.action == DraftAction::Hide;
     show_.selected = draft_.action == DraftAction::Show;
     always_.selected = draft_.action == DraftAction::AlwaysShow;
+    style_.selected = draft_.action == DraftAction::Style;
     for (std::size_t i = 0; i < kinds_.size(); ++i) kinds_[i].selected = KindChoices()[i].first == draft_.kind;
 
     if (PickCount(draft_) == 0) {
@@ -882,6 +920,7 @@ void AddRuleView::ShowStep() {
         for (Widget* w : widgets) w->visible = step_ == s;
     };
     on(Step::Action, {&hide_, &show_, &always_});
+    style_.visible = step_ == Step::Action && draft_.replacing;
     for (overlay::Chip& c : kinds_) c.visible = step_ == Step::Kind;
     on(Step::Items, {&itemSearch_, &categoryList_, &entryList_, &all_, &none_, &chosen_});
     const bool tier = step_ == Step::Tier;
@@ -910,16 +949,33 @@ void AddRuleView::ShowStep() {
 
 void AddRuleView::Save(Ui& ui) {
     if (!Complete(draft_) || loaded_->session == nullptr) return;
-    const std::vector<edit::OwnRule> rules = RulesNow();
+    std::vector<edit::OwnRule> rules = RulesNow();
     const std::string editing = editing_;
+    const std::string replaces = replaces_;
+    if (draft_.replacing && !rules.empty()) {  // where the rule was: a copy changed again stays put, a new copy follows the filter's rule
+        edit::OwnRule& copy = rules[0];
+        if (const edit::OwnRule* before = editing.empty() ? nullptr : loaded_->session->Own(editing); before != nullptr) {
+            copy.place = before->place;
+            copy.keepShown = before->keepShown;
+            copy.after = before->after;
+            copy.section = before->section;
+            copy.replaces = before->replaces;
+        } else {
+            copy.replaces = replaces;
+            copy.after = replaces;
+            const int index = loaded_->doc.FindRule(replaces);
+            copy.section = index >= 0 ? loaded_->Place(index) : std::string{};
+        }
+    }
     std::shared_ptr<bool> alive = alive_;
     CommitChange(
         ui, loaded_, alive_,
-        [rules, editing](edit::Session& s) {
+        [rules, editing, replaces](edit::Session& s) {
             for (std::size_t i = 0; i < rules.size(); ++i) {
                 if (i == 0 && !editing.empty()) s.ReplaceOwn(editing, rules[i]);
                 else s.AddOwn(rules[i]);
             }
+            if (!replaces.empty() && editing.empty()) s.SetOff(replaces, true);
         },
         [this, alive](Ui& u, bool ok, bool, const std::string& error) {
             if (!*alive) return;
@@ -985,7 +1041,7 @@ void AddRuleView::Layout(const LayoutContext& c) {
     switch (step_) {
         case Step::Action: {
             int cx = body.left;
-            for (overlay::Chip* chip : {&hide_, &show_, &always_}) {
+            for (overlay::Chip* chip : {&hide_, &show_, &always_, &style_}) {
                 const int w = std::max(m.S(150), m.TextWidth(UiText(chip->label), Font::Body) + m.S(30));
                 chip->box = Box{cx, body.top, cx + w, body.top + buttonH + m.S(8)};
                 cx += w + gap;
@@ -1124,7 +1180,7 @@ void AddRuleView::Layout(const LayoutContext& c) {
 void AddRuleView::FocusList(std::vector<Widget*>& out) {
     out.clear();
     for (overlay::Chip& c : stepChips_) out.push_back(&c);
-    for (Widget* w : std::initializer_list<Widget*>{&heading_, &hint_, &hide_, &show_, &always_}) out.push_back(w);
+    for (Widget* w : std::initializer_list<Widget*>{&heading_, &hint_, &hide_, &show_, &always_, &style_}) out.push_back(w);
     for (overlay::Chip& c : kinds_) out.push_back(&c);
     for (Widget* w : std::initializer_list<Widget*>{&itemSearch_, &categoryList_, &entryList_, &all_, &none_, &chosen_, &qualityLabel_, &white_, &superior_})
         out.push_back(w);
