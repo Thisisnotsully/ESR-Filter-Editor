@@ -174,19 +174,13 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
         CHECK(labels.insert(o.label).second);  // no two alike
     }
     CHECK(skills >= 1);
-    // A hide leaves towns alone unless asked; reading it back keeps the choice.
+    // A hide always leaves towns alone.
     {
         RuleDraft h = FromItem("rin", 6, -1, {}, game);
         h.action = DraftAction::Hide;
         const auto out = ToRules(h, game, "Rare rings");
         const document::Value* areas = out.at(0).rule.Find("excludeAreas");
         CHECK(areas != nullptr && areas->IsArray() && areas->array.size() == TownAreas().size());
-        RuleDraft back;
-        CHECK(FromRule(out[0].rule, game, back) && back.action == DraftAction::Hide && !back.inTowns);
-        h.inTowns = true;
-        const auto everywhere = ToRules(h, game, "Rare rings");
-        CHECK(everywhere.at(0).rule.Find("excludeAreas") == nullptr);
-        CHECK(FromRule(everywhere[0].rule, game, back) && back.inTowns);
         RuleDraft shown = FromItem("rin", 6, -1, {}, game);
         shown.action = DraftAction::AlwaysShow;
         CHECK(ToRules(shown, game, "Rare rings").at(0).rule.Find("excludeAreas") == nullptr);
@@ -809,10 +803,35 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
                 classic = classic || c.name == "Runes: classic and others";
             }
             CHECK(green == 8 && classic);
+            // No two alike in a list: the unused and monster ring copies are gone, the Mythical ones say so.
+            const auto noTwins = [&](bool& mythRing, bool& unused) {
+                for (const AddRuleView::Category& c : steps->Categories()) {
+                    std::set<std::string> seen;
+                    for (const AddRuleView::Entry& e : c.entries) {
+                        CHECK(seen.insert(e.name + "|" + e.tag).second);
+                        mythRing = mythRing || (e.code == "mrn" && e.tag == "Mythical");
+                        unused = unused || e.code == "rn2" || e.code == "rn9" || e.code == "au2" || e.code == "au9" || e.code == "mr1";
+                    }
+                }
+            };
+            {
+                bool myth = false, unused = false;
+                noTwins(myth, unused);
+                CHECK(!unused);
+            }
             f.Focus(&steps->ItemSearch());
             for (char16_t ch : esrfe::overlay::Utf8ToUtf16("Ber Rune")) f.Char(ch);
             layout();
             CHECK(steps->Entries().size() == 1);  // found once
+            steps->ItemSearch().SetValue("");
+            steps->GoTo(Step::Kind);
+            layout();
+            click(steps->KindChip(1));  // magic: rings and amulets
+            {
+                bool myth = false, unused = false;
+                noTwins(myth, unused);
+                CHECK(myth && !unused);
+            }
             steps->GoTo(Step::Kind);
             layout();
             click(steps->KindChip(3));
@@ -1210,6 +1229,35 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
         }
     }
 
+    // A new version, named: the drop-down lists it and chooses it at once, before the game has switched.
+    {
+        h.source->info.filterId = "repo:QoL-Filter/Sullys-QoL-Filter.json";
+        h.source->info.path = (user / "QoL-Filter" / "Sullys-QoL-Filter.json").string();
+        h.source->Put(filterText);
+        h.Refresh(true);
+        Loaded* now = const_cast<Loaded*>(h.view->Data());
+        CHECK(now != nullptr && now->session != nullptr && now->session->NeedsName());
+        if (now != nullptr && now->session != nullptr) {
+            std::shared_ptr<Loaded> keep(std::shared_ptr<Loaded>{}, now);
+            auto alive = std::make_shared<bool>(true);
+            bool saved = false;
+            h.platform.pushed.clear();
+            CommitChange(h.form, keep, alive, [](edit::Session& s) { s.SetOff("R003", true); },
+                         [&saved](Ui&, bool ok, bool, const std::string&) { saved = ok; }, nullptr);
+            auto name = h.platform.pushed.empty() ? nullptr : std::dynamic_pointer_cast<VersionNameView>(h.platform.pushed.back());
+            CHECK(name != nullptr);
+            if (name != nullptr) {
+                name->Name().SetValue("test 2");
+                name->MakeButton().onClick(h.form);
+                CHECK(saved);
+                h.Refresh();  // the game still says Sully's filter
+                const esrfe::overlay::Dropdown& filters = h.view->Filters();
+                const auto at = std::find(filters.options.begin(), filters.options.end(), std::string("test 2"));
+                CHECK(at != filters.options.end() && filters.selected == static_cast<int>(at - filters.options.begin()));
+            }
+        }
+    }
+
     // A new filter from the questions: "+ New filter…" in the drop-down, every step filled in, Create switches to it.
     {
         h.source->folders.starter = ESRFE_STARTER_DIR;
@@ -1255,7 +1303,7 @@ static void ViewTests(const std::shared_ptr<const gamedata::GameData>& game, con
             wizard->List().Select(2, nullptr);  // R071: up to 99 gold from clvl 20
             wizard->List().onSelect(2, wf);
             layout();
-            CHECK(wizard->Clvl().visible && wizard->Amount().visible && wizard->Towns().visible && wizard->AddStep().visible);
+            CHECK(wizard->Clvl().visible && wizard->Amount().visible && wizard->AddStep().visible);
             wizard->Clvl().onChange(25, wf);
             wizard->AddStep().onClick(wf);
             const edit::PartChoice* gold = wizard->Answers().Part("gold");

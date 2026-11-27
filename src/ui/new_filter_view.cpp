@@ -248,14 +248,6 @@ NewFilterView::NewFilterView(std::shared_ptr<Source> source, std::function<void(
         Changed();
         ui.Repaint();
     };
-    towns_.label = "In towns too";
-    towns_.onChange = [this](bool on, Ui& ui) {
-        const Line* line = SelectedLine();
-        if (line == nullptr) return;
-        if (edit::Row* r = RowAt(*line)) r->towns = on;
-        Changed();
-        ui.Repaint();
-    };
     addStep_.label = "+ Add a step like this";
     addStep_.onClick = [this](Ui& ui) {
         const Line* line = SelectedLine();
@@ -438,7 +430,7 @@ auto NewFilterView::RuleTitle(const std::string& id) const -> std::string {
     return title;
 }
 
-auto NewFilterView::RowSummary(const edit::Row& row, const edit::StarterPart& part) const -> std::string {
+auto NewFilterView::RowSummary(const edit::Row& row, [[maybe_unused]] const edit::StarterPart& part) const -> std::string {
     const int levels = LevelCount();
     const int to = row.to <= 0 || row.to > levels ? levels : row.to;
     std::string text;
@@ -448,7 +440,6 @@ auto NewFilterView::RowSummary(const edit::Row& row, const edit::StarterPart& pa
     else text = UiFormat("levels {0}-{1}", {std::to_string(row.from), std::to_string(to)});
     if (row.amount >= 0) text = UiFormat("up to {0} gold", {std::to_string(row.amount)}) + "  ·  " + text;
     if (row.clvl > 0) text += "  ·  " + UiFormat("from character level {0}", {std::to_string(row.clvl)});
-    if (part.kind == edit::StarterPart::Kind::Hide) text += "  ·  " + (row.towns ? UiText("in towns too") : UiText("outside towns"));
     return text;
 }
 
@@ -600,7 +591,6 @@ void NewFilterView::SyncControls() {
             to_.selected = (r->to <= 0 || r->to > LevelCount() ? LevelCount() : r->to) - 1;
             clvl_.SetValue(r->clvl);
             amount_.SetValue(static_cast<int>(std::max<std::int64_t>(0, r->amount)));
-            towns_.on = r->towns;
             partTitle_.text = RuleTitle(r->copyOf.empty() ? r->id : r->copyOf);
             partHelp_.text = RowSummary(*r, part);
         }
@@ -648,7 +638,7 @@ void NewFilterView::ShowStep() {
     show(parts && row != nullptr, {&rowOn_, &fromLabel_, &toLabel_, &from_, &to_, &clvlLabel_, &clvl_});
     show(parts && row != nullptr && row->amount >= 0, {&amountLabel_, &amount_});
     const bool hide = part != nullptr && part->kind == edit::StarterPart::Kind::Hide;
-    show(parts && row != nullptr && hide, {&towns_, &addStep_});
+    show(parts && row != nullptr && hide, {&addStep_});
     show(parts && row != nullptr && !row->copyOf.empty(), {&removeStep_});
     const bool look = key == "look";
     show(look, {&styles_, &borderLabel_, &backLabel_, &beamLabel_, &borderSame_, &backSame_, &beamSame_, &volumeLabel_, &volume_, &volumeValue_,
@@ -838,8 +828,6 @@ void NewFilterView::Layout(const LayoutContext& c) {
             amount_.box = Box{px, cy, px + m.S(200), cy + fieldH};
             cy += fieldH + gap;
         }
-        towns_.box = Box{px, cy, body.right, cy + rowH};
-        cy += rowH + gap;
         addStep_.box = Box{px, cy, body.right, cy + buttonH};
         cy += buttonH + m.S(6);
         removeStep_.box = Box{px, cy, body.right, cy + buttonH};
@@ -858,7 +846,7 @@ void NewFilterView::FocusList(std::vector<Widget*>& out) {
         out.push_back(&levelNames_[i]);
     }
     for (Widget* w : std::initializer_list<Widget*>{&defaultLabel_, &defaultLevel_, &list_, &partTitle_, &partHelp_, &partOn_, &rowOn_, &fromLabel_, &from_,
-                                                    &toLabel_, &to_, &clvlLabel_, &clvl_, &amountLabel_, &amount_, &towns_, &addStep_, &removeStep_,
+                                                    &toLabel_, &to_, &clvlLabel_, &clvl_, &amountLabel_, &amount_, &addStep_, &removeStep_,
                                                     &styles_, &borderLabel_, &borderSame_})
         out.push_back(w);
     for (overlay::Swatch& s : borderSw_) out.push_back(&s);

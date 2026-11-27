@@ -96,6 +96,8 @@ int main(int argc, char** argv) {
         for (Value* v : {&a, &b})
             if (const Value* l = v->Find("activeInLevels"); l != nullptr && l->IsNumber()) v->Set("activeInLevels", Value::Array({*l}));
         if (Levels(&b) == (std::vector<std::int64_t>{1, 2, 3, 4})) b.Erase("activeInLevels");
+        // A hide in the starter that also hid in towns: the new filter's leaves them alone.
+        if (b.Find("hide") != nullptr && b.Find("excludeAreas") == nullptr && a.Find("excludeAreas") != nullptr) a.Erase("excludeAreas");
         same += m != nullptr && a == b ? 1 : 0;
         if (m == nullptr || !(a == b)) std::printf("  DIFF %s\n", r.id.c_str());
     }
@@ -123,11 +125,10 @@ int main(int argc, char** argv) {
     CHECK(gold != nullptr);
     for (Row& r : gold->rows)
         if (r.id == "R075") {
-            CHECK(r.from == 2 && r.to == 0 && r.clvl == 40 && r.amount == 249 && !r.towns);
+            CHECK(r.from == 2 && r.to == 0 && r.clvl == 40 && r.amount == 249);
             r.from = 3;
             r.clvl = 50;
             r.amount = 300;
-            r.towns = true;
         }
     PartChoice* minor = mine.Part("minorPotions");
     CHECK(minor != nullptr && minor->rows.size() == 1 && minor->rows[0].clvl == 12);
@@ -151,7 +152,7 @@ int main(int argc, char** argv) {
     CHECK(Levels(RuleOf(three, "R004")) == (std::vector<std::int64_t>{1, 2}));
     CHECK(RuleOf(three, "R003") == nullptr);
     const Value* r075 = RuleOf(three, "R075");
-    CHECK(r075 != nullptr && Levels(r075) == (std::vector<std::int64_t>{3}) && r075->Find("excludeAreas") == nullptr);
+    CHECK(r075 != nullptr && Levels(r075) == (std::vector<std::int64_t>{3}) && r075->Find("excludeAreas") != nullptr);  // hides always leave towns alone
     {
         std::int64_t clvl = 0, amount = 0;
         r075->Find("playerStats")->array[0].Find("value")->AsInteger(clvl);

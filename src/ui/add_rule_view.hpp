@@ -144,7 +144,6 @@ private:
     overlay::Label atLeastLabel_;
     overlay::NumberBox atLeast_;
     std::deque<overlay::Checkbox> levels_;
-    overlay::Checkbox towns_;  // a hide: in towns too
     overlay::Label borderLabel_, backLabel_, nameLabel_, soundLabel_, iconLabel_, iconSizeLabel_, iconSizeValue_;
     overlay::Chip borderNone_, backNone_, nameGame_;
     std::deque<overlay::Swatch> borderSw_, backSw_, nameSw_, beamSw_, chatSw_;

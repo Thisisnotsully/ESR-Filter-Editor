@@ -63,7 +63,6 @@ public:
     auto To() -> overlay::Dropdown& { return to_; }
     auto Clvl() -> overlay::NumberBox& { return clvl_; }
     auto Amount() -> overlay::NumberBox& { return amount_; }
-    auto Towns() -> overlay::Checkbox& { return towns_; }
     auto AddStep() -> overlay::Button& { return addStep_; }
     auto RemoveStep() -> overlay::Button& { return removeStep_; }
     auto PartOn() -> overlay::Toggle& { return partOn_; }
@@ -126,7 +125,6 @@ private:
     overlay::Label fromLabel_, toLabel_, clvlLabel_, amountLabel_;
     overlay::Dropdown from_, to_;
     overlay::NumberBox clvl_, amount_;
-    overlay::Checkbox towns_;
     overlay::Button addStep_, removeStep_;
     // Look.
     overlay::ListView styles_;

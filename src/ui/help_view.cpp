@@ -43,7 +43,7 @@ auto HelpTopics() -> const std::vector<HelpTopic>& {
         {"Adding a rule",
          {
              "+ Add a rule goes through the steps: what happens, item type, items, tier, stats, strictness, style, check.",
-             "Hide hides the items on the strictness levels you pick, outside towns (tick Hide in towns too for towns as well). Show keeps them shown there. Always Show keeps them shown on every level.",
+             "Hide hides the items on the strictness levels you pick, outside towns. Show keeps them shown there. Always Show keeps them shown on every level.",
              "Your rules come first in the filter: what they hide is hidden, what they show is never hidden.",
              "Style: border, background and name colours, a light beam, a drop sound, a chat line and a minimap icon. The pictures show how it will look.",
              "Rules with stats only work on identified items.",

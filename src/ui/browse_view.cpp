@@ -250,7 +250,11 @@ void BrowseView::Refresh(Ui& ui, bool force) {
 
 void BrowseView::Apply(const FilterInfo& info, Ui& ui, bool force) {
     std::shared_ptr<const gamedata::GameData> game = source_->Game();
-    if (info.bridge && (force || filters_.empty() || !loaded_ || loaded_->info.filterId != info.filterId)) RebuildFilters(info.filterId);
+    // A save (a rule card's change) may have made or renamed a version: the list again at once, with the version the game
+    // is switching to chosen (the game reads the new selection a moment later).
+    const bool saved = loaded_ && loaded_->stale && loaded_->session != nullptr;
+    const std::string active = saved && loaded_->session->IsCopy() ? loaded_->session->MergedId() : info.filterId;
+    if (info.bridge && (force || saved || filters_.empty() || !loaded_ || loaded_->info.filterId != info.filterId)) RebuildFilters(active);
     if (loaded_ && loaded_->stale && loaded_->session != nullptr) {  // edited on a rule card: the list again
         loaded_->Build(loaded_->session->ViewText());
         Rebuild();

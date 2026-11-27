@@ -35,7 +35,7 @@ struct StarterPart {
     std::string label;
     std::string help;
     std::vector<std::string> rules;  // the starter's rule ids, in the filter's order
-    bool rows = true;                // each rule can be edited (levels, character level, gold, towns)
+    bool rows = true;                // each rule can be edited (levels, character level, gold)
     bool minimal = false;            // on in the minimal start
 };
 
@@ -71,7 +71,6 @@ struct Row {
     int to = 0;
     int clvl = 0;            // from this character level (0: any)
     std::int64_t amount = -1;  // gold piles up to this (-1: not a gold step)
-    bool towns = false;        // a hide step: also in towns
 };
 
 struct PartChoice {

@@ -66,8 +66,8 @@ struct Look {
     friend auto operator==(const Look&, const Look&) -> bool = default;
 };
 
-// The five act towns (levels.txt ids). A player's hide rule leaves them alone unless asked ("excludeAreas"),
-// as the filters do: in town every item is shown.
+// The five act towns (levels.txt ids). A player's hide rule always leaves them alone ("excludeAreas"), as the
+// filters' do: in town every item is shown.
 inline const std::vector<std::int64_t>& TownAreas() {
     static const std::vector<std::int64_t> towns{1, 40, 75, 103, 109};
     return towns;
@@ -93,7 +93,6 @@ struct RuleDraft {
     std::vector<int> setItems;           // Set: setitems rows
     std::vector<StatPick> stats;         // superior-only bases, or magic items
     std::vector<std::int64_t> levels;    // empty: every level (always show: always)
-    bool inTowns = false;                // hide: in towns too (by default a hide leaves towns alone, where filters show everything)
     Look look;
 };
 

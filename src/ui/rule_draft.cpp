@@ -321,11 +321,9 @@ void PutCommon(Value& rule, const RuleDraft& draft, const gamedata::GameData& ga
 auto Finish(Value rule, const RuleDraft& draft) -> edit::OwnRule {
     edit::OwnRule own;
     if (draft.action == DraftAction::Hide) {
-        if (!draft.inTowns) {
-            Value towns = Value::Array();
-            for (std::int64_t t : TownAreas()) towns.array.push_back(Value::Integer(t));
-            rule.Set("excludeAreas", std::move(towns));
-        }
+        Value towns = Value::Array();
+        for (std::int64_t t : TownAreas()) towns.array.push_back(Value::Integer(t));
+        rule.Set("excludeAreas", std::move(towns));
         rule.Set("hide", Value::Bool(true));
         own.place = "top";
     } else if (draft.look.Any()) {  // the look last (its colours win), a show-only copy first (never hidden)
@@ -502,10 +500,7 @@ auto FromRule(const Value& rule, const gamedata::GameData& game, RuleDraft& out)
         look.chatText = text;
     }
     const bool hasLevels = rule.Find("activeInLevels") != nullptr;
-    if (truthy("hide")) {
-        out.action = DraftAction::Hide;
-        out.inTowns = rule.Find("excludeAreas") == nullptr;  // an older rule of the player's, made before towns were left alone
-    }
+    if (truthy("hide")) out.action = DraftAction::Hide;
     else if (truthy("show") || look.Any()) out.action = hasLevels ? DraftAction::Show : DraftAction::AlwaysShow;
     else return false;
 

@@ -982,7 +982,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.14.0",
+    .version     = "0.15.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,

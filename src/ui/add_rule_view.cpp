@@ -307,13 +307,6 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
         };
     }
 
-    towns_.label = "Hide in towns too";
-    towns_.onChange = [this](bool on, Ui& ui) {
-        draft_.inTowns = on;
-        Changed();
-        ui.Repaint();
-    };
-
     // 7 Look.
     borderLabel_.text = "Border";
     backLabel_.text = "Background";
@@ -514,6 +507,11 @@ void AddRuleView::RebuildCategories() {
         case ItemKind::Magic:
         case ItemKind::Rare:
         case ItemKind::Other: {
+            std::set<std::string> droppedNames;  // the names of the bases the game drops
+            for (const gamedata::Group& group : game_.groups.All())
+                for (const gamedata::Subgroup& sub : group.subgroups)
+                    for (const std::string& code : sub.bases)
+                        if (const gamedata::Base* b = game_.bases.Find(code); b != nullptr && b->spawnable) droppedNames.insert(baseName(code));
             for (const gamedata::Group& group : game_.groups.All()) {
                 std::vector<Category> subs;
                 for (const gamedata::Subgroup& sub : group.subgroups) {
@@ -526,8 +524,20 @@ void AddRuleView::RebuildCategories() {
                         e.type = Entry::Type::Base;
                         e.code = code;
                         e.name = baseName(code);
-                        e.tag = b->mythical ? UiText("Mythical") : UiText(TierWord(b->tier));
+                        e.tag = b->mythical || b->mythicalMisc ? UiText("Mythical") : UiText(TierWord(b->tier));
                         c.entries.push_back(std::move(e));
+                    }
+                    // Bases that share a name: a copy the game never drops (spawnable 0: Ring (unused), the LoD socketed
+                    // ring, the monster rings) goes when a droppable base has the name; any still alike show their code.
+                    {
+                        std::map<std::string, int> count;
+                        std::erase_if(c.entries, [&](const Entry& e) {
+                            const gamedata::Base* b = game_.bases.Find(e.code);
+                            return b != nullptr && !b->spawnable && droppedNames.count(e.name) != 0;
+                        });
+                        for (const Entry& e : c.entries) ++count[e.name + "\n" + e.tag];
+                        for (Entry& e : c.entries)
+                            if (count[e.name + "\n" + e.tag] > 1) e.tag = e.tag.empty() ? e.code : e.tag + " " + e.code;
                     }
                     if (c.entries.empty()) continue;
                     // Runes: ESR's by the colour of their names, the classic ones (El to Zod) together.
@@ -763,8 +773,7 @@ void AddRuleView::Changed() {
         checkText_.push_back("#" + UiText("What it does"));
         switch (draft_.action) {
             case DraftAction::Hide:
-                checkText_.push_back(draft_.inTowns ? UiText("Hides them on the ground, in towns too")
-                                                    : UiText("Hides them on the ground outside towns (in town every item is shown)"));
+                checkText_.push_back(UiText("Hides them on the ground outside towns (in town every item is shown)"));
                 break;
             case DraftAction::Show: checkText_.push_back(UiText("Shows them on the levels below: no rule can hide them there")); break;
             default: checkText_.push_back(UiText("Always shows them, on every level: no rule can hide them")); break;
@@ -841,7 +850,6 @@ void AddRuleView::SyncControls() {
     atLeast_.SetValue(pick != nullptr ? pick->atLeast : (option != nullptr ? option->min : 0));
     for (std::size_t i = 0; i < levels_.size(); ++i)
         levels_[i].on = draft_.levels.empty() || std::find(draft_.levels.begin(), draft_.levels.end(), levelIds_[i]) != draft_.levels.end();
-    towns_.on = draft_.inTowns;
 
     const Look& look = draft_.look;
     borderNone_.selected = !look.border;
@@ -886,7 +894,6 @@ void AddRuleView::ShowStep() {
     const bool stats = step_ == Step::Bonuses && offer_.statsPossible;
     for (Widget* w : std::initializer_list<Widget*>{&statSearch_, &statList_, &atLeastLabel_, &atLeast_}) w->visible = stats;
     for (overlay::Checkbox& b : levels_) b.visible = step_ == Step::Levels;
-    towns_.visible = step_ == Step::Levels && draft_.action == DraftAction::Hide;
     const bool look = step_ == Step::Look;
     for (Widget* w : std::initializer_list<Widget*>{&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &borderNone_, &backNone_, &nameGame_,
                                                     &beam_, &chat_, &sound_, &play_, &chatText_, &iconLabel_, &icon_, &iconSizeLabel_, &iconSize_,
@@ -1050,8 +1057,6 @@ void AddRuleView::Layout(const LayoutContext& c) {
                 box.box = Box{body.left, cy, body.left + m.S(360), cy + rowH};
                 cy += rowH;
             }
-            cy += gap * 2;
-            towns_.box = Box{body.left, cy, body.left + m.S(360), cy + rowH};
             break;
         }
         case Step::Look: {
@@ -1128,7 +1133,6 @@ void AddRuleView::FocusList(std::vector<Widget*>& out) {
     for (overlay::Chip& c : myth_) out.push_back(&c);
     for (Widget* w : std::initializer_list<Widget*>{&statSearch_, &statList_, &atLeastLabel_, &atLeast_}) out.push_back(w);
     for (overlay::Checkbox& b : levels_) out.push_back(&b);
-    out.push_back(&towns_);
     out.push_back(&borderLabel_);
     out.push_back(&borderNone_);
     for (overlay::Swatch& s : borderSw_) out.push_back(&s);

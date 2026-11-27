@@ -179,7 +179,6 @@ auto RowOf(const Starter& starter, const std::string& id) -> Row {
     }
     row.clvl = CharacterLevel(rule);
     row.amount = GoldAmount(rule);
-    row.towns = rule.Find("hide") != nullptr && rule.Find("excludeAreas") == nullptr;
     return row;
 }
 
@@ -248,7 +247,6 @@ auto ParseRecipe(std::string_view text, Recipe& out, std::string& error) -> bool
                     row.to = static_cast<int>(Int(w.Find("to"), 0));
                     row.clvl = static_cast<int>(Int(w.Find("clvl"), 0));
                     row.amount = Int(w.Find("amount"), -1);
-                    row.towns = Bool(w.Find("towns"), false);
                     c.rows.push_back(std::move(row));
                 }
             }
@@ -279,7 +277,6 @@ auto RenderRecipe(const Recipe& r) -> std::string {
             m.push_back({"to", Value::Integer(w.to)});
             m.push_back({"clvl", Value::Integer(w.clvl)});
             if (w.amount >= 0) m.push_back({"amount", Value::Integer(w.amount)});
-            if (w.towns) m.push_back({"towns", Value::Bool(true)});
             rows.push_back(Value::Object(std::move(m)));
         }
         std::vector<Member> m{{"key", Value::String(p.key)}, {"on", Value::Bool(p.on)}};
@@ -363,12 +360,10 @@ auto ApplyRow(document::Document& doc, int index, const Row& row, const StarterP
         stats.push_back(Value::Object({{"stat", Value::String("gold")}, {"op", Value::String("<=")}, {"value", Value::Integer(row.amount)}}));
         if (const document::Status s = doc.SetField(index, "itemStats", Value::Array(std::move(stats))); !s) return Fail(error, "gold", s);
     }
-    // Towns: a hide step leaves them alone unless asked.
+    // Towns: a hide step always leaves them alone (in town every item is shown).
     if (part.kind == StarterPart::Kind::Hide) {
         const bool has = rule.Find("excludeAreas") != nullptr;
-        if (row.towns && has) {
-            if (const document::Status s = doc.RemoveField(index, "excludeAreas"); !s) return Fail(error, "towns", s);
-        } else if (!row.towns && !has && !starter.towns.empty()) {
+        if (!has && !starter.towns.empty()) {
             std::vector<Value> towns;
             for (std::int64_t t : starter.towns) towns.push_back(Value::Integer(t));
             if (const document::Status s = doc.SetField(index, "excludeAreas", Value::Array(std::move(towns)), "hide"); !s) return Fail(error, "towns", s);
