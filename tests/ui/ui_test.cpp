@@ -174,6 +174,23 @@ static void DraftTests(const gamedata::GameData& game, const char* outPath) {
         CHECK(labels.insert(o.label).second);  // no two alike
     }
     CHECK(skills >= 1);
+    // A hide leaves towns alone unless asked; reading it back keeps the choice.
+    {
+        RuleDraft h = FromItem("rin", 6, -1, {}, game);
+        h.action = DraftAction::Hide;
+        const auto out = ToRules(h, game, "Rare rings");
+        const document::Value* areas = out.at(0).rule.Find("excludeAreas");
+        CHECK(areas != nullptr && areas->IsArray() && areas->array.size() == TownAreas().size());
+        RuleDraft back;
+        CHECK(FromRule(out[0].rule, game, back) && back.action == DraftAction::Hide && !back.inTowns);
+        h.inTowns = true;
+        const auto everywhere = ToRules(h, game, "Rare rings");
+        CHECK(everywhere.at(0).rule.Find("excludeAreas") == nullptr);
+        CHECK(FromRule(everywhere[0].rule, game, back) && back.inTowns);
+        RuleDraft shown = FromItem("rin", 6, -1, {}, game);
+        shown.action = DraftAction::AlwaysShow;
+        CHECK(ToRules(shown, game, "Rare rings").at(0).rule.Find("excludeAreas") == nullptr);
+    }
     // Rare: the affixes a rare can have (identified rares, like magic ones).
     RuleDraft rare = FromItem("rin", 6, -1, {}, game);
     const DraftOffer rareOffer = Offer(rare, game);

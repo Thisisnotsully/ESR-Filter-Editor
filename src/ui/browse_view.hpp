@@ -80,6 +80,7 @@ struct ItemRules {
     };
     std::vector<Match> matched;  // in the filter's order, each id once
     bool more = false;           // the loot filter listed only the first ones
+    bool outsideTown = false;    // the player is in a town: the answer is for outside town (filters show everything in town)
 };
 
 

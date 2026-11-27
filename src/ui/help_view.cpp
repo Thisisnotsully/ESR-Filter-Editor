@@ -30,6 +30,7 @@ auto HelpTopics() -> const std::vector<HelpTopic>& {
              "On which strictness levels: this one, this one and stricter ones, or every level.",
              "One button makes the rule. More options opens every step of a new rule, filled in.",
              "An item in your inventory is judged as if it had just dropped where you stand.",
+             "In town every item is shown, so there it shows what the filter does with the item outside town.",
          }},
         {"Changing a rule",
          {
@@ -42,7 +43,7 @@ auto HelpTopics() -> const std::vector<HelpTopic>& {
         {"Adding a rule",
          {
              "+ Add a rule goes through the steps: what happens, item type, items, tier, stats, strictness, style, check.",
-             "Hide hides the items on the strictness levels you pick. Show keeps them shown there. Always Show keeps them shown on every level.",
+             "Hide hides the items on the strictness levels you pick, outside towns (tick Hide in towns too for towns as well). Show keeps them shown there. Always Show keeps them shown on every level.",
              "Your rules come first in the filter: what they hide is hidden, what they show is never hidden.",
              "Style: border, background and name colours, a light beam, a drop sound, a chat line and a minimap icon. The pictures show how it will look.",
              "Rules with stats only work on identified items.",

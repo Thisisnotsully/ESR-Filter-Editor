@@ -307,6 +307,13 @@ AddRuleView::AddRuleView(std::shared_ptr<Loaded> loaded, RuleDraft draft, std::s
         };
     }
 
+    towns_.label = "Hide in towns too";
+    towns_.onChange = [this](bool on, Ui& ui) {
+        draft_.inTowns = on;
+        Changed();
+        ui.Repaint();
+    };
+
     // 7 Look.
     borderLabel_.text = "Border";
     backLabel_.text = "Background";
@@ -755,7 +762,10 @@ void AddRuleView::Changed() {
         summaryNow_ = Describe(rules.front().rule, loaded_->context);
         checkText_.push_back("#" + UiText("What it does"));
         switch (draft_.action) {
-            case DraftAction::Hide: checkText_.push_back(UiText("Hides them on the ground")); break;
+            case DraftAction::Hide:
+                checkText_.push_back(draft_.inTowns ? UiText("Hides them on the ground, in towns too")
+                                                    : UiText("Hides them on the ground outside towns (in town every item is shown)"));
+                break;
             case DraftAction::Show: checkText_.push_back(UiText("Shows them on the levels below: no rule can hide them there")); break;
             default: checkText_.push_back(UiText("Always shows them, on every level: no rule can hide them")); break;
         }
@@ -831,6 +841,7 @@ void AddRuleView::SyncControls() {
     atLeast_.SetValue(pick != nullptr ? pick->atLeast : (option != nullptr ? option->min : 0));
     for (std::size_t i = 0; i < levels_.size(); ++i)
         levels_[i].on = draft_.levels.empty() || std::find(draft_.levels.begin(), draft_.levels.end(), levelIds_[i]) != draft_.levels.end();
+    towns_.on = draft_.inTowns;
 
     const Look& look = draft_.look;
     borderNone_.selected = !look.border;
@@ -875,6 +886,7 @@ void AddRuleView::ShowStep() {
     const bool stats = step_ == Step::Bonuses && offer_.statsPossible;
     for (Widget* w : std::initializer_list<Widget*>{&statSearch_, &statList_, &atLeastLabel_, &atLeast_}) w->visible = stats;
     for (overlay::Checkbox& b : levels_) b.visible = step_ == Step::Levels;
+    towns_.visible = step_ == Step::Levels && draft_.action == DraftAction::Hide;
     const bool look = step_ == Step::Look;
     for (Widget* w : std::initializer_list<Widget*>{&borderLabel_, &backLabel_, &nameLabel_, &soundLabel_, &borderNone_, &backNone_, &nameGame_,
                                                     &beam_, &chat_, &sound_, &play_, &chatText_, &iconLabel_, &icon_, &iconSizeLabel_, &iconSize_,
@@ -1038,6 +1050,8 @@ void AddRuleView::Layout(const LayoutContext& c) {
                 box.box = Box{body.left, cy, body.left + m.S(360), cy + rowH};
                 cy += rowH;
             }
+            cy += gap * 2;
+            towns_.box = Box{body.left, cy, body.left + m.S(360), cy + rowH};
             break;
         }
         case Step::Look: {
@@ -1114,6 +1128,7 @@ void AddRuleView::FocusList(std::vector<Widget*>& out) {
     for (overlay::Chip& c : myth_) out.push_back(&c);
     for (Widget* w : std::initializer_list<Widget*>{&statSearch_, &statList_, &atLeastLabel_, &atLeast_}) out.push_back(w);
     for (overlay::Checkbox& b : levels_) out.push_back(&b);
+    out.push_back(&towns_);
     out.push_back(&borderLabel_);
     out.push_back(&borderNone_);
     for (overlay::Swatch& s : borderSw_) out.push_back(&s);

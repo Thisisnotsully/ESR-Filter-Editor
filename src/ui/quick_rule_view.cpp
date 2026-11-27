@@ -68,7 +68,9 @@ QuickRuleView::QuickRuleView(std::shared_ptr<Loaded> loaded, ItemRules item, Bro
         const std::vector<std::string> showing = ShowingRules();
         verdict = showing.empty() ? UiText("Shown.") : UiFormat("Shown: {0} never hides it.", {Join(showing)});
     }
-    state_.text = where.empty() ? verdict : where + "  " + UiFormat("If it dropped here: {0}", {verdict});
+    if (item_.outsideTown)  // in town every item shows: what matters is what happens out in the field
+        state_.text = (where.empty() ? std::string{} : where + "  ") + UiFormat("You are in town, where every item is shown. Outside town: {0}", {verdict});
+    else state_.text = where.empty() ? verdict : where + "  " + UiFormat("If it dropped here: {0}", {verdict});
     seeRules_.label = item_.matched.empty() ? std::string("No rule matches it") : UiFormat("The rules that match it ({0})", {std::to_string(item_.matched.size())});
     seeRules_.translate = false;
     seeRules_.enabled = !item_.matched.empty();

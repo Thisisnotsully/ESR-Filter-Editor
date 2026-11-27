@@ -312,6 +312,10 @@ auto PrintItem(const Bridge::HoveredItem& item, bool chat) -> std::vector<esrfe:
         line2 = Yc + "2Shown";
         hiddenText = "shown";
     }
+    if (item.judgedOutsideTown != 0) {  // in town every item shows: the answer is for outside town
+        line2 += Yc + "0 (outside town)";
+        hiddenText += " (judged outside town)";
+    }
 
     // Line 3: the rules that match.
     std::string line3;
@@ -361,6 +365,7 @@ auto RulesOf(const Bridge::HoveredItem& item) -> esrfe::ui::ItemRules {
     out.location = item.location;  // 0 (on the ground) from a version 1 bridge
     out.hidden = item.hidden != 0;
     out.hiddenUnmatched = item.hiddenBy == -1;
+    out.outsideTown = item.judgedOutsideTown != 0;  // 0 from a version 1 or 2 bridge
     const auto idOf = [](const std::string& title) {
         return TitleHasId(title) ? title.substr(0, title.find_first_of(" |")) : std::string{};
     };
@@ -977,7 +982,7 @@ constexpr D2RL::PluginInfo PluginInfoData{
     .abiVersion  = D2RL_PLUGIN_ABI_VERSION,
     .id          = "sully.loot-filter-editor",
     .name        = "Loot Filter Editor",
-    .version     = "0.13.0",
+    .version     = "0.14.0",
     .author      = "Sully",
     .description = "In-game loot filter editor (milestone 2: the window and its readers).",
     .flags       = D2RL::PluginFlags::Client,
